@@ -1,0 +1,1917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Uma Quota — Club Fan Dashboard</title>
+<meta name="description" content="Fan quota leaderboard and monthly projections for an Uma Musume club on uma.moe." />
+<style>
+  :root{
+    --bg:#0a0a0a; --bg2:#121212; --bg3:#1a1a1a; --surface:rgba(255,255,255,.03);
+    --surface2:rgba(255,255,255,.06); --border:rgba(255,255,255,.10);
+    --text:#fff; --muted:rgba(255,255,255,.62); --faint:rgba(255,255,255,.40);
+    --blue:#64b5f6; --green:#81c784; --amber:#ffb74d; --red:#e57373; --purple:#ce93d8;
+    --gold:#ffd700; --radius:12px; --shadow:0 10px 30px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button{font-family:inherit}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 clamp(12px,3vw,28px) 64px}
+
+  header.top{position:sticky;top:0;z-index:20;background:rgba(10,10,10,.92);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .top-inner{max-width:1280px;margin:0 auto;padding:14px clamp(12px,3vw,28px);
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px}
+  .brand .dot{width:12px;height:12px;border-radius:50%;background:linear-gradient(45deg,var(--blue),var(--green))}
+  .brand small{font-weight:500;color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  #circleSelect{max-width:240px}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);font-size:12px;color:var(--muted)}
+  button.pill{cursor:pointer}
+  button.pill:hover{background:var(--surface2);color:var(--text)}
+  button.pill:focus-visible{outline:2px solid rgba(100,181,246,.55);outline-offset:2px}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;
+    background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;
+    font-size:13px;font-weight:600;transition:.15s}
+  .btn:hover{background:rgba(255,255,255,.12)}
+  .btn.primary{background:linear-gradient(45deg,var(--blue),var(--green));color:#06231f;border:none}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.on{color:var(--green);border-color:rgba(129,199,132,.45);background:rgba(129,199,132,.12)}
+  .btn.off{color:var(--red);border-color:rgba(229,115,115,.4);background:rgba(229,115,115,.10)}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+  .card h2{margin:0 0 4px;font-size:15px;letter-spacing:.02em}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+
+  /* summary */
+  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:20px 0}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+  .stat .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+  .stat .value{font-size:26px;font-weight:700;margin-top:4px}
+  .stat .sub{font-size:13px;color:var(--muted);margin-top:2px}
+  .stat.good .value{color:var(--green)} .stat.bad .value{color:var(--red)} .stat.warn .value{color:var(--amber)}
+
+  /* chart */
+  .chart-card{margin:0 0 20px}
+  .chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .chart-head h2{margin:0}
+  .chart-toggles{display:flex;gap:8px;flex-wrap:wrap}
+  .chart-toggles .btn{font-size:13px;padding:6px 10px}
+  canvas{width:100%;height:260px;display:block}
+
+  /* quota recommendations */
+  .recs{margin:0 0 20px}
+  .recs-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .recs-head h2{margin:0}
+  .recs-fields{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .recs-head .field{flex-direction:row;align-items:center;gap:8px}
+  .recs-head .field input{width:68px;padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums}
+  .rec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .rec{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+  .rec .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+  .rec .value{font-size:26px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .rec .value small{font-size:13px;font-weight:500;color:var(--muted);margin-left:4px}
+  .rec .sub{font-size:13px;color:var(--muted);margin-top:2px}
+  .rec .sub .k{color:var(--faint);font-size:12px}
+  .rec .sub b{font-weight:600;font-variant-numeric:tabular-nums}
+  .rec .sub b.up{color:var(--amber)}
+  .rec .sub b.down{color:var(--green)}
+  .rec .sub b.flat{color:var(--muted)}
+  .rec.good .value{color:var(--green)}
+  .rec.warn .value{color:var(--amber)}
+  .rec-empty{color:var(--faint);font-size:14px;padding:6px 0}
+  /* focused-player cards: gold when the panel shows the current player */
+  .player-card{transition:border-color .18s ease,background .18s ease}
+  .card.player-card.gold{border-color:rgba(255,215,0,.38);background:rgba(255,215,0,.055)}
+  .card.player-card.gold .chart-head h2,.card.player-card.gold .recs-head h2{color:var(--gold)}
+  /* ...blue when it follows a selected member, matching the selected row/card */
+  .card.player-card.sel{border-color:rgba(100,181,246,.45);background:rgba(100,181,246,.07)}
+  .card.player-card.sel .chart-head h2,.card.player-card.sel .recs-head h2{color:var(--blue)}
+
+  /* controls */
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+  input,select{background:var(--bg3);border:1px solid var(--border);color:var(--text);
+    padding:9px 12px;border-radius:9px;font-size:14px;outline:none;font-family:inherit}
+  select{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-right:36px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ffffff' stroke-opacity='0.55' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 13px center;background-size:11px}
+  input:focus,select:focus{border-color:rgba(100,181,246,.55)}
+  input[type=password]{letter-spacing:.05em}
+  .key-wrap{position:relative;display:flex;align-items:center}
+  .key-wrap input{flex:1;padding-right:42px}
+  .key-wrap .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);
+    display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
+    padding:0;background:transparent;border:none;border-radius:8px;color:var(--muted);cursor:pointer}
+  .key-wrap .eye:hover{color:var(--text);background:rgba(255,255,255,.08)}
+  .help-btn{width:17px;height:17px;padding:0;border-radius:50%;border:1px solid var(--border);
+    background:transparent;color:var(--muted);font-size:11px;font-weight:700;line-height:1;
+    cursor:pointer;text-transform:none;letter-spacing:0}
+  .help-btn:hover,.help-btn[aria-expanded="true"]{color:var(--text);border-color:var(--muted);
+    background:rgba(255,255,255,.08)}
+  .help-pop{max-width:440px;margin:2px 0 14px;padding:12px 14px;border:1px solid var(--border);
+    border-radius:10px;background:var(--surface2);font-size:13px;color:var(--muted)}
+  .help-pop .help-title{color:var(--text);font-weight:600;margin-bottom:6px}
+  .help-pop ol{margin:0 0 6px;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+  .help-pop p{margin:0}
+  .help-pop a{color:var(--blue)}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  .grow{flex:1;min-width:160px}
+
+  /* table */
+  .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:920px}
+  th,td{padding:11px 14px;text-align:left;white-space:nowrap}
+  td{font-weight:500}
+  thead th{position:sticky;top:0;background:#161616;color:var(--muted);font-size:12px;
+    text-transform:uppercase;letter-spacing:.06em;cursor:pointer;user-select:none;border-bottom:1px solid var(--border)}
+  thead th:hover{color:var(--text)}
+  thead th.no-sort{cursor:default}
+  th .arrow{opacity:.5;font-size:9px}
+  tbody tr{border-bottom:1px solid rgba(255,255,255,.05)}
+  tbody tr:hover{background:rgba(255,255,255,.035)}
+  tbody tr.inactive{opacity:.42}
+  tbody tr[data-id]{cursor:pointer}
+  tbody tr.selected{background:rgba(100,181,246,.16)}
+  tbody tr.selected td:first-child{box-shadow:inset 3px 0 0 #64b5f6}
+  /* current player: gold wins over the blue .selected styling */
+  tbody tr.current-player{background:rgba(255,215,0,.10)}
+  tbody tr.current-player:hover{background:rgba(255,215,0,.15)}
+  tbody tr.current-player td{box-shadow:inset 0 0 0 1px rgba(255,215,0,.30)}
+  tbody tr.current-player td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
+  tbody tr.current-player .trainer{color:var(--gold)}
+  /* both selected (chart) and current player: keep blue selection, add gold identity */
+  tbody tr.current-player.selected{background:rgba(100,181,246,.16)}
+  tbody tr.current-player.selected:hover{background:rgba(100,181,246,.20)}
+  tbody tr.current-player.selected td{box-shadow:inset 0 0 0 1px rgba(255,215,0,.30)}
+  tbody tr.current-player.selected td:first-child{
+    box-shadow:inset 3px 0 0 #64b5f6, inset 0 0 0 1px rgba(255,215,0,.30)}
+  tbody tr.current-player.selected .trainer{color:var(--gold)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .rank{font-weight:700;color:var(--muted);width:44px}
+  .rank.r1{color:var(--gold)} .rank.r2{color:#cfd8dc} .rank.r3{color:#d7a06a}
+  .trainer{font-weight:600}
+  .me-star{color:var(--gold)}
+  .id{color:var(--faint);font-size:12px;font-weight:400}
+  .role{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);
+    margin-left:6px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .role.leader{color:var(--gold);border-color:rgba(255,215,0,.4)}
+  .role.officer{color:var(--purple);border-color:rgba(206,147,216,.4)}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  .bar{position:relative;height:7px;width:120px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+  .bar > i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;display:block}
+  .pace{display:flex;align-items:center;gap:8px}
+  .pace small{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;min-width:56px;letter-spacing:.01em}
+
+  /* setup */
+  .setup{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));align-items:end}
+  .setup .actions{display:flex;gap:10px;align-items:center}
+  .note{font-size:13px;color:var(--muted);margin-top:8px}
+  .subhead{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:8px}
+  .club-list{display:flex;flex-direction:column;gap:8px}
+  .club-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);
+    border-radius:10px;background:var(--surface2);cursor:pointer;transition:.15s}
+  .club-row:hover{background:rgba(255,255,255,.10)}
+  .club-row.active{border-color:rgba(100,181,246,.5);background:rgba(100,181,246,.10)}
+  .club-info{min-width:0;flex:1}
+  .club-name{font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .club-meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .club-actions{display:flex;gap:8px;flex-shrink:0}
+  .chip{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);
+    color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .chip.active{color:var(--blue);border-color:rgba(100,181,246,.5)}
+  .chip.err{color:var(--red);border-color:rgba(229,115,115,.45)}
+  .banner{padding:10px 14px;border-radius:10px;font-size:14px;margin:12px 0;border:1px solid var(--border)}
+  .banner.err{background:rgba(229,115,115,.10);border-color:rgba(229,115,115,.35);color:#ffcdd2}
+  .banner.ok{background:rgba(129,199,132,.08);border-color:rgba(129,199,132,.3);color:#c8e6c9}
+  .hidden{display:none!important}
+
+  footer{margin-top:28px;color:var(--faint);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);
+    border-top-color:#fff;border-radius:50%;animation:s .7s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+
+  /* mobile cards (rendered always; shown only in mobile view) */
+  .cards{display:none}
+  .mcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+  .mcard.inactive{opacity:.55}
+  .mcard[data-id]{cursor:pointer}
+  .mcard.selected{border-color:rgba(100,181,246,.6);background:rgba(100,181,246,.12);box-shadow:inset 3px 0 0 #64b5f6}
+  .mcard.current-player{border-color:rgba(255,215,0,.6);background:rgba(255,215,0,.10);box-shadow:inset 3px 0 0 var(--gold)}
+  .mcard.current-player .mname{color:var(--gold)}
+  .mcard.current-player.selected{border-color:rgba(100,181,246,.6);background:rgba(100,181,246,.12);box-shadow:inset 3px 0 0 #64b5f6}
+  .mcard.current-player.selected .mname{color:var(--gold)}
+  .mrow1{display:flex;align-items:baseline;gap:8px}
+  .mrow1 .rank{width:auto;font-size:15px}
+  .mname{font-weight:600;flex:1;min-width:0}
+  .mname .id{margin-left:4px}
+  .mmonthly{margin-left:auto;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .mmonthly small{display:block;font-size:11px;font-weight:400;color:var(--faint);
+    text-transform:uppercase;letter-spacing:.06em}
+  .mpace{margin-top:10px}
+  .mpace .bar{width:100%}
+  .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px}
+  .mstat{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .mstat .label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  .mstat .mval{font-weight:600;font-variant-numeric:tabular-nums}
+  .mnote{margin-top:8px;font-size:13px;color:var(--faint)}
+
+  /* ---- mobile view (toggle-controlled) ---- */
+  body.view-mobile .top-inner{padding:12px 14px;gap:8px}
+  body.view-mobile .brand{width:100%;font-size:18px}
+  body.view-mobile .spacer{display:none}
+  body.view-mobile #circleSelect{max-width:none;width:100%}
+  body.view-mobile .pill{font-size:12px}
+  body.view-mobile .wrap{padding-bottom:48px}
+  body.view-mobile .summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
+  body.view-mobile .stat{padding:12px}
+  body.view-mobile .stat .value{font-size:22px}
+  body.view-mobile .stat .sub{font-size:12px}
+  body.view-mobile .table-wrap{display:none}
+  body.view-mobile .cards{display:grid;gap:10px}
+  body.view-mobile canvas{height:210px}
+  body.view-mobile .controls{gap:8px}
+  body.view-mobile .controls .field,
+  body.view-mobile .controls .grow{flex:1 1 100%}
+  body.view-mobile #quotaInput{width:100%}
+  body.view-mobile .recs-fields{width:100%;gap:10px}
+  body.view-mobile .recs-head .field{flex:1 1 100%}
+  body.view-mobile .recs-head .field input{width:100%}
+  body.view-mobile .setup{grid-template-columns:1fr}
+  body.view-mobile .setup .actions{flex-direction:column}
+  body.view-mobile .club-row{flex-wrap:wrap}
+  body.view-mobile .club-actions{width:100%}
+  body.view-mobile .club-actions .btn{flex:1;justify-content:center}
+  body.view-mobile input,body.view-mobile select,body.view-mobile .btn{min-height:44px;font-size:15px}
+  body.view-mobile .btn{padding:10px 14px}
+  body.view-mobile .setup .actions .btn{width:100%}
+  body.view-mobile .pace small{min-width:48px}
+  #quotaInput{width:150px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand"><span class="dot"></span> Uma Quota <small id="clubTag"></small></div>
+    <select id="circleSelect" class="hidden" title="Recently viewed clubs"></select>
+    <div class="spacer"></div>
+    <button type="button" class="pill" id="freshPill" title="Updated time">not loaded</button>
+    <span class="pill" id="dayPill"></span>
+    <button class="btn" id="refreshBtn">↻ Refresh</button>
+    <button class="btn" id="settingsBtn">⚙ Settings</button>
+    <button class="btn" id="viewToggle" title="Toggle PC / mobile layout" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 5h2"/></svg></button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- SETUP -->
+  <section class="card" id="setupCard" style="margin-top:20px">
+    <h2 id="setupTitle">Add a club</h2>
+    <p class="muted" style="margin:4px 0 14px;font-size:13px">
+      Paste your club's uma.moe circle ID and the daily fan quota. The browser calls uma.moe
+      directly with your own API key, stored only in this browser.
+    </p>
+    <div id="clubListWrap" class="hidden" style="margin-bottom:16px">
+      <div class="subhead">Saved clubs</div>
+      <div class="club-list" id="clubList"></div>
+    </div>
+    <div class="setup">
+      <div class="field grow">
+        <label for="setupCircle">Circle ID or uma.moe URL</label>
+        <input id="setupCircle" placeholder="574559219" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="setupName">Club name <span class="faint" style="text-transform:none">(optional)</span></label>
+        <input id="setupName" placeholder="Auto from uma.moe" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="setupQuota">Daily quota (fans/day)</label>
+        <input id="setupQuota" type="text" inputmode="numeric" autocomplete="off" value="1,000,000" />
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="setupConnect">Add club</button>
+        <button class="btn hidden" id="setupCancel">Cancel</button>
+      </div>
+    </div>
+    <div class="field" style="margin-top:14px">
+      <label for="setupKey" style="display:flex;align-items:center;gap:8px">uma.moe API key
+        <button type="button" class="help-btn" id="keyHelpBtn" aria-expanded="false"
+          aria-controls="keyHelp" title="How to get an API key">?</button>
+      </label>
+      <div class="key-wrap">
+        <input id="setupKey" type="password" placeholder="uma_k_..." autocomplete="off" />
+        <button type="button" class="eye" id="setupKeyEye" title="Show API key" aria-label="Show API key" aria-pressed="false"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+      </div>
+    </div>
+    <div class="help-pop hidden" id="keyHelp">
+      <div class="help-title">Create an uma.moe API key</div>
+      <ol>
+        <li>Log in at <a href="https://uma.moe" target="_blank" rel="noopener">uma.moe</a>.</li>
+        <li>Open <b>Account &rarr; Settings &rarr; API Keys</b>.</li>
+        <li>Create a key with a name, then paste it here.</li>
+      </ol>
+      <p>Your key is stored only in this browser and sent only to uma.moe.</p>
+    </div>
+    <p class="note">Stored in this browser's localStorage and sent only to uma.moe.
+      It is visible in dev tools on this device.</p>
+    <div class="field" style="margin-top:14px">
+      <label for="setupPlayer">Current player <span class="faint" style="text-transform:none">(optional)</span></label>
+      <input id="setupPlayer" placeholder="12-digit player ID or trainer name" autocomplete="off" />
+      <div class="faint" id="playerNote" style="font-size:12px;margin-top:6px"></div>
+    </div>
+    <p class="note">Highlights your own row in the leaderboard with a gold star. Use your
+      12-digit player ID (a leading &ldquo;#&rdquo; is fine); a trainer name works only when it
+      matches exactly one member. Applies to every saved club.</p>
+    <div id="setupMsg"></div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="hidden">
+    <div class="summary" id="summary"></div>
+
+    <div class="card chart-card">
+      <div class="chart-head">
+        <h2><span id="chartWho">Club</span> cumulative <span class="faint">vs quota pace &amp; projection</span></h2>
+        <div class="chart-toggles" id="chartToggles">
+          <button class="btn" id="rankNowToggle" title="Show rank lines for the current total">Ranks now</button>
+          <button class="btn" id="rankProjToggle" title="Show rank lines for the projected total">Ranks projected</button>
+        </div>
+      </div>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card recs">
+      <div class="recs-head">
+        <h2>Club quota recommendations <span class="faint" style="font-weight:400">per member / day</span></h2>
+        <div class="recs-fields">
+          <div class="field quota">
+            <label for="quotaInput">Daily quota</label>
+            <input id="quotaInput" type="text" inputmode="numeric" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="marginInput">Safety margin %</label>
+            <input id="marginInput" type="text" inputmode="decimal" autocomplete="off" value="10" />
+          </div>
+        </div>
+      </div>
+      <div class="rec-grid" id="recGrid"></div>
+      <div class="note" id="recNote"></div>
+    </div>
+
+    <div class="card chart-card player-card hidden" id="playerChartCard">
+      <div class="chart-head">
+        <h2><span id="playerChartWho">Player</span> cumulative <span class="faint">vs quota pace &amp; projection</span></h2>
+      </div>
+      <canvas id="playerChart"></canvas>
+    </div>
+
+    <div class="card recs player-card hidden" id="playerRecsCard">
+      <div class="recs-head">
+        <h2><span id="playerRecName">Player</span> quota recommendations <span class="faint" style="font-weight:400">per day</span></h2>
+      </div>
+      <div class="rec-grid" id="playerRecGrid"></div>
+      <div class="note" id="playerRecNote"></div>
+    </div>
+
+    <div class="card" style="padding:14px 16px;margin-bottom:12px">
+      <div class="controls">
+        <div class="field grow">
+          <label for="searchInput">Search trainer</label>
+          <input id="searchInput" placeholder="Filter by name…" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="sortSelect">Sort by</label>
+          <select id="sortSelect">
+            <option value="deficit">vs Quota</option>
+            <option value="monthly">Monthly fans</option>
+            <option value="daily">Daily average</option>
+            <option value="projected">Projected monthly</option>
+            <option value="today">Today (finalized)</option>
+            <option value="name">Name</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="btn" id="liveToggle" title="Overlay in-progress day">Live</button>
+        </div>
+      </div>
+      <div class="faint" style="font-size:13px" id="tableNote"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <footer>
+      <span>Data: <a href="https://uma.moe" target="_blank" rel="noopener">uma.moe</a> · JST competition calendar · finalized day only</span>
+      <span class="spacer"></span>
+      <span id="footTime"></span>
+    </footer>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------------------------------------------------------------- config
+  const DIRECT_BASE = "https://uma.moe/api/v4/circles";
+  const REFRESH_MS = 5 * 60 * 1000;
+  const LS_KEY = "umaQuota.v1";
+  const LS_CIRCLES = "umaQuota.circles.v1";
+  const LS_VIEW = "umaQuota.view.v1";
+  const LS_MARGIN = "umaQuota.margin.v1";
+  const LS_TZ = "umaQuota.tz.v1";
+  const LS_PLAYER = "umaQuota.player.v1";
+  const MAX_RECENT = 8;
+
+  // ---------------------------------------------------------------- state
+  const state = {
+    circleId: "",
+    quota: 1000000,
+    margin: 10,           // safety margin %, always >= 0
+    apiKey: "",
+    live: false,
+    sort: "deficit",
+    search: "",
+    view: "pc",           // "pc" | "mobile" (auto-detected once, then user-owned)
+    tz: "jst",            // "jst" | "local" — which zone the header/footer clocks use
+    rankNow: true,        // show rank bars based on the current/finalized total
+    rankProj: true,       // show rank bars based on the month-end projection
+    playerId: "",         // current player's member id (preferred, browser-wide)
+    playerName: "",       // current player's trainer name (fallback when no id)
+    selectedId: null,     // member id selected in the table (drives highlight + focused-player cards)
+    selPeriod: "",        // competition period key the selection belongs to
+    setupEditId: null,    // circle id currently loaded into the setup form (null = add mode)
+    circleErrors: {},     // circle id -> last load error message (runtime only)
+    data: null,
+    loadSeq: 0,           // monotonic token: only the newest in-flight load may apply
+    timer: null,
+    countdown: 0
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------- storage
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+      if (s.circleId) state.circleId = String(s.circleId);
+      if (typeof s.quota === "number") state.quota = s.quota;
+      if (s.apiKey) state.apiKey = s.apiKey;
+    } catch (e) {}
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        circleId: state.circleId, quota: state.quota, apiKey: state.apiKey
+      }));
+    } catch (e) {}
+  }
+  function loadMargin() {
+    try {
+      const v = parseFloat(localStorage.getItem(LS_MARGIN));
+      if (isFinite(v) && v >= 0) state.margin = v;
+    } catch (e) {}
+  }
+  function saveMargin() {
+    try { localStorage.setItem(LS_MARGIN, String(state.margin)); } catch (e) {}
+  }
+  function loadTz() {
+    let v = null;
+    try { v = localStorage.getItem(LS_TZ); } catch (e) {}
+    state.tz = (v === "local" || v === "jst") ? v : "jst";
+  }
+  function saveTz() {
+    try { localStorage.setItem(LS_TZ, state.tz); } catch (e) {}
+  }
+  function loadPlayer() {
+    try {
+      const p = JSON.parse(localStorage.getItem(LS_PLAYER) || "{}");
+      if (p && typeof p === "object") {
+        if (p.id) state.playerId = String(p.id);
+        if (p.name) state.playerName = String(p.name);
+      }
+    } catch (e) {}
+  }
+  function savePlayer() {
+    try {
+      localStorage.setItem(LS_PLAYER, JSON.stringify({ id: state.playerId, name: state.playerName }));
+    } catch (e) {}
+  }
+  // A 12-digit number (optionally prefixed with "#") is a player ID (preferred);
+  // anything else is a trainer name (fallback). The "#" is stripped before storing.
+  function setPlayerFromInput(v) {
+    v = String(v || "").trim();
+    if (/^#?\d{12}$/.test(v)) { state.playerId = v.replace(/^#/, ""); state.playerName = ""; }
+    else { state.playerId = ""; state.playerName = v; }
+    savePlayer();
+  }
+  function playerInputValue() { return state.playerId || state.playerName || ""; }
+  function parseCircleInput(v) {
+    v = String(v || "").trim();
+    const m = v.match(/(\d{4,})/);
+    return m ? m[1] : "";
+  }
+
+  // recently viewed circles (header switcher)
+  function loadCircles() {
+    try {
+      const a = JSON.parse(localStorage.getItem(LS_CIRCLES) || "[]");
+      return Array.isArray(a) ? a.filter((x) => x && x.id) : [];
+    } catch (e) { return []; }
+  }
+  function saveCircles(list) {
+    try { localStorage.setItem(LS_CIRCLES, JSON.stringify(list.slice(0, MAX_RECENT))); } catch (e) {}
+  }
+  function getCircle(id) {
+    const list = loadCircles();
+    return list.find((x) => String(x.id) === String(id)) || null;
+  }
+  function upsertCircle(id, patch) {
+    if (!id) return null;
+    id = String(id);
+    const list = loadCircles();
+    const idx = list.findIndex((x) => String(x.id) === id);
+    let rec;
+    if (idx >= 0) {
+      rec = Object.assign({}, list[idx], patch || {}, { id, ts: Date.now() });
+      list[idx] = rec;
+    } else {
+      rec = Object.assign({ id, ts: Date.now() }, patch || {});
+      list.unshift(rec);
+    }
+    saveCircles(list);
+    renderCircleList();
+    renderCircleSelect();
+    return rec;
+  }
+  function removeCircle(id) {
+    id = String(id);
+    const rec = getCircle(id);
+    const name = rec ? (rec.name || ("Circle " + id)) : id;
+    saveCircles(loadCircles().filter((x) => String(x.id) !== id));
+    delete state.circleErrors[id];
+    renderCircleList();
+    renderCircleSelect();
+    if (String(state.circleId) === id) {
+      state.data = null;
+      const next = loadCircles()[0];
+      if (next) {
+        state.circleId = String(next.id);
+        state.quota = (typeof next.quota === "number" && next.quota > 0) ? next.quota : state.quota;
+        state.selectedId = null;
+        saveSettings();
+        load();
+      } else {
+        state.circleId = "";
+        state.quota = 1000000;
+        state.selectedId = null;
+        saveSettings();
+        showSetup();
+      }
+    } else {
+      setMsg("Removed " + esc(name) + ".", true);
+    }
+  }
+  function renderCircleSelect() {
+    const sel = $("circleSelect");
+    if (!sel) return;
+    const list = loadCircles();
+    sel.classList.toggle("hidden", list.length < 2);
+    sel.innerHTML = list.map((x) =>
+      `<option value="${esc(x.id)}"${String(x.id) === String(state.circleId) ? " selected" : ""}>${esc(x.name || ("Circle " + x.id))}</option>`
+    ).join("");
+  }
+  function renderCircleList() {
+    const wrap = $("clubListWrap"), el = $("clubList");
+    if (!wrap || !el) return;
+    const list = loadCircles();
+    wrap.classList.toggle("hidden", list.length === 0);
+    el.innerHTML = list.map((x) => {
+      const active = String(x.id) === String(state.circleId);
+      const err = state.circleErrors[x.id];
+      const q = (typeof x.quota === "number" && x.quota > 0) ? fmtQuota(x.quota) + " / day" : "quota not set";
+      const name = x.name || ("Circle " + x.id);
+      return `
+        <div class="club-row${active ? " active" : ""}" data-id="${esc(x.id)}">
+          <div class="club-info">
+            <div class="club-name">${esc(name)} <span class="id">#${esc(x.id)}</span>${active ? ' <span class="chip active">current</span>' : ""}${err ? ` <span class="chip err" title="${esc(err)}">error</span>` : ""}</div>
+            <div class="club-meta">${esc(q)}</div>
+          </div>
+          <div class="club-actions">
+            <button class="btn" data-act="edit">Edit</button>
+            <button class="btn" data-act="remove">Remove</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+  function exitEdit() {
+    state.setupEditId = null;
+    $("setupTitle").textContent = "Add a club";
+    $("setupCircle").value = "";
+    $("setupCircle").readOnly = false;
+    $("setupName").value = "";
+    $("setupQuota").value = fmtQuota(1000000);
+    $("setupConnect").textContent = "Add club";
+    $("setupCancel").classList.add("hidden");
+    setMsg("");
+  }
+  function startEdit(id) {
+    const rec = getCircle(id);
+    if (!rec) return;
+    state.setupEditId = String(id);
+    $("setupTitle").textContent = "Edit club";
+    $("setupCircle").value = rec.id;
+    $("setupCircle").readOnly = true;
+    $("setupName").value = rec.name || "";
+    $("setupQuota").value = fmtQuota((typeof rec.quota === "number" && rec.quota > 0) ? rec.quota : state.quota);
+    $("setupConnect").textContent = "Save changes";
+    $("setupCancel").classList.remove("hidden");
+    setMsg("");
+    $("setupQuota").focus();
+  }
+
+  // ---------------------------------------------------------------- view mode
+  const ICON_PHONE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 5h2"/></svg>';
+  const ICON_PC = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="1.5"/><path d="M8 20.5h8M12 17v3.5"/></svg>';
+  function detectView() {
+    try {
+      if (window.matchMedia("(max-width: 760px)").matches) return "mobile";
+      if (window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 1024) return "mobile";
+    } catch (e) {}
+    return "pc";
+  }
+  function loadView() {
+    let v = null;
+    try { v = localStorage.getItem(LS_VIEW); } catch (e) {}
+    state.view = (v === "mobile" || v === "pc") ? v : detectView();
+  }
+  function applyView() {
+    const mobile = state.view === "mobile";
+    document.body.classList.toggle("view-mobile", mobile);
+    const b = $("viewToggle");
+    if (b) {
+      b.innerHTML = mobile ? ICON_PC : ICON_PHONE;
+      b.title = mobile ? "Switch to PC layout" : "Switch to mobile layout";
+      b.setAttribute("aria-pressed", mobile ? "true" : "false");
+    }
+  }
+  function setView(v) {
+    state.view = v === "mobile" ? "mobile" : "pc";
+    try { localStorage.setItem(LS_VIEW, state.view); } catch (e) {}
+    applyView();
+    if (state.data) { drawChart(state.data); renderPlayerSections(); }   // canvas height changes with the view
+  }
+
+  // ---------------------------------------------------------------- format
+  function nf(n) { return Number(Math.round(n || 0)).toLocaleString("en-US"); }
+  // Quota inputs: show the number with the browser locale's grouping, and parse
+  // it back by keeping only digits (grouping/decimal marks vary by locale).
+  function fmtQuota(v) { return Math.max(0, Math.round(Number(v) || 0)).toLocaleString(); }
+  function parseQuota(s) { const d = String(s == null ? "" : s).replace(/[^\d]/g, ""); return d ? Number(d) : 0; }
+  function formatQuotaInput(el, blankIfEmpty) {
+    if (!el) return;
+    const raw = String(el.value == null ? "" : el.value);
+    const caret = (typeof el.selectionStart === "number") ? el.selectionStart : raw.length;
+    const digitsBefore = (raw.slice(0, caret).match(/\d/g) || []).length;
+    const digits = raw.replace(/[^\d]/g, "");
+    if (!digits) { el.value = blankIfEmpty ? "" : "0"; return; }
+    const formatted = Number(digits).toLocaleString();
+    el.value = formatted;
+    let pos = 0, seen = 0;
+    while (pos < formatted.length && seen < digitsBefore) { if (/\d/.test(formatted[pos])) seen++; pos++; }
+    if (el.setSelectionRange) el.setSelectionRange(pos, pos);
+  }
+  function compact(n) {
+    n = Number(n) || 0;
+    const a = Math.abs(n);
+    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";
+    return String(Math.round(n));
+  }
+  function signed(n) { return (n >= 0 ? "+" : "") + compact(n); }
+  function pct(n) { return (n * 100).toFixed(1) + "%"; }
+  // Club tier names, index = club_rank (1..11), per uma.moe's own mapping.
+  const RANK_NAMES = ["D", "D+", "C", "C+", "B", "B+", "A", "A+", "S", "S+", "SS"];
+  function rankName(n) { return (n >= 1 && n <= RANK_NAMES.length) ? RANK_NAMES[n - 1] : ""; }
+
+  // ---------------------------------------------------------------- JST time
+  // daily_fans[i] = lifetime total at end of JST day i+1. Competition day D
+  // lives at slot D, and D = JST day D+1. A finalized read uses the last
+  // fully-closed JST day; the live read uses the in-progress day.
+  const JST_MS = 9 * 3600 * 1000;
+  // JST is a fixed UTC+9 with no DST: shift the epoch by 9h and read UTC getters
+  // (toISOString/getUTCDate/...) to get the JST wall clock, in any local zone.
+  function jstWallClock(now = new Date()) {
+    return new Date(now.getTime() + JST_MS);
+  }
+  function addDays(d, delta) {
+    const x = new Date(d.getTime());
+    x.setUTCDate(x.getUTCDate() + delta);
+    return x;
+  }
+  function daysInUTC(d) {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  }
+  function ymdLabel(p) {
+    return new Date(Date.UTC(p.year, p.monthIndex, 1))
+      .toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  }
+  // Any period carries a 0-based monthIndex for Date math and a 1-based month
+  // because that is what the uma.moe API and member rows use.
+  function makePeriod(d) {
+    const mi = d.getUTCMonth();
+    return { year: d.getUTCFullYear(), monthIndex: mi, month: mi + 1, slot: d.getUTCDate(), daysInMonth: daysInUTC(d) };
+  }
+  function resolvePeriods() {
+    const j = jstWallClock();
+    const final = makePeriod(addDays(j, -2));  // finalized competition day (today JST - 2)
+    const live  = makePeriod(addDays(j, -1));  // in-progress competition day (today JST - 1)
+    return { final, live, now: j };
+  }
+
+  // ---------------------------------------------------------------- series
+  // Convert lifetime cumulative fans into monthly cumulative-per-slot, handling
+  // negative transfer markers (prior circle) and missed-day zero gaps.
+  function seriesFromLifetime(raw, presentSlot) {
+    const vals = (raw || []).map((v) => (typeof v === "number" ? v : 0));
+    let baseIdx = -1;
+    for (let i = 0; i < vals.length; i++) { if (vals[i] > 0) { baseIdx = i; break; } }
+    if (baseIdx < 0) return null;
+    const base = vals[baseIdx];
+    const bySlot = new Array(Math.max(vals.length, (presentSlot || 0) + 1)).fill(0);
+    let prev = 0;
+    for (let i = 0; i < vals.length; i++) {
+      if (i < baseIdx) { bySlot[i] = 0; continue; }
+      const v = vals[i];
+      const cur = v > 0 ? Math.max(0, v - base) : prev; // gap/transfer -> forward-fill
+      bySlot[i] = cur; prev = cur;
+    }
+    return { baseIdx, base, bySlot };
+  }
+  function at(series, slot) {
+    if (!series || slot < 0) return 0;
+    const s = series.bySlot;
+    if (slot >= s.length) return s.length ? s[s.length - 1] : 0;
+    return s[slot] || 0;
+  }
+
+  function roleOf(m, circle) {
+    if (m.membership === 3) return "leader";
+    if (m.membership === 2) return "officer";
+    if (!m.membership && circle && circle.leader_viewer_id === m.viewer_id) return "leader";
+    return "member";
+  }
+  function clubName(c) {
+    return (c && (c.name || c.circle_name)) || ("Circle " + state.circleId);
+  }
+
+  // ---------------------------------------------------------------- compute
+  function compute(payload, periods) {
+    const circle = payload.circle || {};
+    const year = periods.final.year, month = periods.final.month; // API month is 1-based
+    let members = Array.isArray(payload.members) ? payload.members : [];
+    const scoped = members.filter((m) => m.year === undefined || (m.year === year && m.month === month));
+    if (scoped.length) members = scoped;
+
+    const fin = periods.final, live = periods.live;
+    const samePeriod = live.year === fin.year && live.month === fin.month;
+
+    const parsed = members.map((m) => {
+      const series = seriesFromLifetime(m.daily_fans, fin.slot);
+      return { member: m, series, name: m.trainer_name || "Unknown",
+        id: m.viewer_id != null ? String(m.viewer_id) : "", role: roleOf(m, circle) };
+    });
+
+    const rows = [];
+    for (const { series, name, id, role } of parsed) {
+      if (!series) { rows.push({ name, id, role, present: false, inactive: true }); continue; }
+
+      const monthly = at(series, fin.slot);
+      const todayFinal = Math.max(0, monthly - at(series, fin.slot - 1));
+      const presentDays = Math.max(0, fin.slot - series.baseIdx);       // days the member is charged for
+      const charged = Math.max(1, presentDays);
+      const dailyAvg = monthly / charged;
+      const expected = state.quota * presentDays;
+      const deficit = monthly - expected;
+      const pace = expected > 0 ? monthly / expected : (monthly > 0 ? 1 : 0);
+      const projected = fin.daysInMonth > 0 ? dailyAvg * fin.daysInMonth : monthly;
+      const projectedDeficit = projected - state.quota * fin.daysInMonth;
+      const liveToday = (state.live && samePeriod)
+        ? Math.max(0, at(series, live.slot) - at(series, live.slot - 1)) : null;
+      const leftClub = monthly === 0 && series.baseIdx <= fin.slot;
+
+      rows.push({
+        name, id, role, present: true, inactive: leftClub,
+        monthly, todayFinal, liveToday, dailyAvg, expected, deficit, pace,
+        projected, projectedDeficit, joinedSlot: series.baseIdx, presentDays, series
+      });
+    }
+
+    const present = rows.filter((r) => r.present && !r.inactive);
+    const clubMonthly = present.reduce((a, r) => a + r.monthly, 0);
+    const clubExpected = present.reduce((a, r) => a + r.expected, 0);
+    const clubProjected = present.reduce((a, r) => a + r.projected, 0);
+    const met = present.filter((r) => r.deficit >= 0).length;
+    const behind = present.length - met;
+    const avgDaily = clubMonthly / Math.max(1, fin.slot);
+
+    // club cumulative per slot, for the chart
+    const cumulative = [];
+    for (let s = 0; s <= fin.slot; s++) {
+      let sum = 0;
+      for (const p of parsed) if (p.series) sum += at(p.series, s);
+      cumulative.push(sum);
+    }
+
+    const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+    const tier = {
+      rank: num(payload.club_rank != null ? payload.club_rank : circle.club_rank),
+      next: num(payload.fans_to_next_tier),
+      lower: num(payload.fans_to_lower_tier),
+      yNext: num(payload.yesterday_fans_to_next_tier),
+      yLower: num(payload.yesterday_fans_to_lower_tier),
+      point: num(circle.monthly_point),
+      yPoint: num(circle.yesterday_points)
+    };
+
+    return {
+      circle, rows, met, behind, clubMonthly, clubExpected, clubProjected,
+      avgDaily, cumulative, fin, memberCount: present.length, tier
+    };
+  }
+
+  // ---------------------------------------------------------------- fetch
+  async function getJson(url, headers) {
+    const res = await fetch(url, { headers: Object.assign({ Accept: "application/json" }, headers || {}) });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (e) {}
+    return { res, json, text };
+  }
+
+  async function apiGet(params) {
+    if (!state.apiKey) throw new Error("no_key");
+    const qs = new URLSearchParams(params).toString();
+    const { res, json } = await getJson(`${DIRECT_BASE}?${qs}`, { "X-API-Key": state.apiKey });
+    if (!res.ok) throw new Error((json && json.error) || `uma.moe ${res.status}`);
+    if (!json) throw new Error("bad_response");
+    return json;
+  }
+
+  async function load({ silent } = {}) {
+    if (!state.circleId) { showSetup(); return; }
+    const reqCircle = state.circleId;
+    const seq = ++state.loadSeq;
+    if (!silent) setBusy(true);
+    setMsg("");
+    try {
+      const periods = resolvePeriods();
+      const payload = await apiGet({ circle_id: reqCircle, year: periods.final.year, month: periods.final.month });
+      if (seq !== state.loadSeq || reqCircle !== state.circleId) return;   // superseded by a newer load
+      state.data = compute(payload, periods);
+      const pk = periods.final.year + "-" + periods.final.month;
+      if (state.selPeriod && state.selPeriod !== pk) state.selectedId = null;   // month rolled over
+      state.selPeriod = pk;
+      if (state.selectedId && !state.data.rows.some((r) => r.present && !r.inactive && r.id === state.selectedId))
+        state.selectedId = null;                                                // member gone
+      delete state.circleErrors[reqCircle];
+      showDashboard();   // unhide first: drawChart needs a laid-out canvas
+      render();
+      startTimer();
+      if (!silent) setMsg("", true);
+    } catch (e) {
+      if (seq !== state.loadSeq || reqCircle !== state.circleId) return;   // stale failure
+      const msg = String(e && e.message || e);
+      state.circleErrors[reqCircle] = msg;
+      renderCircleList();
+      const keyIssue = (msg === "no_key" || msg === "invalid_api_key" || /401/.test(msg));
+      // Surface a non-silent failure on the setup screen (with the club list, so
+      // the failing club stays visible). Silent auto-refresh failures must not
+      // yank the user away from the dashboard.
+      if (!silent || keyIssue) showSetup();
+      if (keyIssue) {
+        setMsg("An uma.moe API key is required. Enter one below.", false);
+      } else if (msg === "browser_proof_required") {
+        setMsg("uma.moe rejected the direct browser call — check your API key.", false);
+      } else if (/429/.test(msg)) {
+        setMsg("Rate limited by uma.moe. Wait a minute and refresh.", false);
+      } else {
+        setMsg("Could not load club data: " + esc(msg), false);
+      }
+      if (silent && !keyIssue) { const f = $("freshPill"); if (f) f.textContent = "load failed"; }
+    } finally {
+      if (seq === state.loadSeq) setBusy(false);
+    }
+  }
+
+  // ---------------------------------------------------------------- render
+  function setBusy(on) {
+    $("refreshBtn").disabled = on;
+    $("refreshBtn").innerHTML = on ? '<span class="spin"></span> Loading' : "↻ Refresh";
+  }
+  function setMsg(html, ok) {
+    const el = $("setupMsg");
+    if (!html) { el.innerHTML = ""; return; }
+    el.innerHTML = `<div class="banner ${ok ? "ok" : "err"}">${html}</div>`;
+  }
+  function showSetup() {
+    $("setupCard").classList.remove("hidden");
+    $("dashboard").classList.add("hidden");
+    exitEdit();
+    $("setupKey").value = state.apiKey || "";
+    $("setupPlayer").value = playerInputValue();
+    setKeyVisible(false);
+    renderCircleList();
+    renderCircleSelect();
+    updateSettingsBtn();
+  }
+  function showDashboard() {
+    $("setupCard").classList.add("hidden");
+    $("dashboard").classList.remove("hidden");
+    $("quotaInput").value = fmtQuota(state.quota);
+    updateSettingsBtn();
+  }
+  function updateSettingsBtn() {
+    const b = $("settingsBtn");
+    if (!b) return;
+    const onSetup = !$("setupCard").classList.contains("hidden");
+    const canBack = onSetup && !!state.data;
+    b.textContent = canBack ? "← Back" : "⚙ Settings";
+    b.title = canBack ? "Back to dashboard" : "Open settings";
+  }
+
+  function render() {
+    const d = state.data;
+    if (!d) return;
+    const c = d.circle;
+    const displayName = clubName(c);
+    if (state.circleId) {
+      const rec = getCircle(state.circleId);
+      const patch = { quota: state.quota };
+      if (!rec || !rec.customName) patch.name = displayName;
+      upsertCircle(state.circleId, patch);
+    }
+
+    $("clubTag").textContent = displayName +
+      (c.member_count ? ` · ${c.member_count} members` : "");
+    $("dayPill").textContent = `Day ${d.fin.slot} / ${d.fin.daysInMonth} · ${ymdLabel(d.fin)}`;
+    renderFreshPill();
+    renderFootTime();
+
+    const clubPace = d.clubExpected > 0 ? d.clubMonthly / d.clubExpected : 1;
+    const clubProjectedDeficit = d.clubProjected - state.quota * d.fin.daysInMonth * d.memberCount;
+
+    // Rank tier thresholds use the same finalized "now" total the chart bars do.
+    const tier = d.tier || {};
+    const rankNow = rankName(tier.rank);
+    const rankNext = rankName(tier.rank != null ? tier.rank + 1 : null);
+    // Finalized global standing. The Live toggle only affects the table's Today
+    // column, so the whole summary (like the chart) stays on the finalize marker.
+    const monthlyRank = (d.circle && d.circle.monthly_rank != null) ? d.circle.monthly_rank : null;
+    const tierNow = (d.cumulative && d.cumulative.length)
+      ? d.cumulative[d.cumulative.length - 1] : d.clubMonthly;
+    const rankParts = [];
+    if (tier.lower != null) rankParts.push(`${rankNow ? rankNow + " " : ""}floor ${compact(tierNow - tier.lower)}`);
+    if (tier.next != null) rankParts.push(`next${rankNext ? " " + rankNext : ""} ${compact(tierNow + tier.next)}`);
+
+    const stats = [
+      { label: "Club monthly fans", value: compact(d.clubMonthly), sub: nf(d.clubMonthly) + " total" },
+      { label: "vs quota pace", value: pct(clubPace),
+        cls: clubPace >= 1 ? "good" : clubPace >= 0.95 ? "warn" : "bad",
+        sub: signed(d.clubMonthly - d.clubExpected) + " fans" },
+      { label: "Members on pace", value: `${d.met} / ${d.memberCount}`,
+        cls: d.behind === 0 ? "good" : d.met >= d.memberCount / 2 ? "warn" : "bad",
+        sub: `${d.behind} behind quota` },
+      { label: "Club avg / day", value: compact(d.avgDaily), sub: "finalized days only" },
+      { label: "Current rank", value: monthlyRank != null ? "#" + monthlyRank : (rankNow || "—"),
+        sub: rankParts.join(" · ") || "tier data unavailable" },
+      { label: "Projected month", value: compact(d.clubProjected),
+        cls: d.clubProjected >= state.quota * d.fin.daysInMonth * d.memberCount ? "good" : "warn",
+        sub: signed(clubProjectedDeficit) + " vs full quota" }
+    ];
+    $("summary").innerHTML = stats.map((s) => `
+      <div class="stat ${s.cls || ""}">
+        <div class="label">${s.label}</div>
+        <div class="value">${s.value}</div>
+        <div class="sub">${s.sub || ""}</div>
+      </div>`).join("");
+
+    renderRecs();
+    renderRows();
+    drawChart(d);
+    renderPlayerSections();
+  }
+
+  // ------------------------------------------------------- recommendations
+  // Recommended per-member daily quota to hold the current rank ("keep") or
+  // reach the one above ("reach"). Each tier bar is dynamic and driven by other
+  // clubs, so project it forward over the remaining days by its observed drift:
+  //   projectedBar = C + dir * gap + drift * remaining
+  //   quota = max(0, drift + (bar - C) / remaining) / members * (1 + margin)
+  // Drift uses the API's own current-vs-yesterday totals, so it is independent
+  // of the derived C. Without yesterday_* the drift is 0 and the bars stay
+  // static; a bar projected below C needs no quota ("safe").
+  function recModel(d) {
+    const known = (v) => typeof v === "number" && isFinite(v);
+    const t = d.tier || {};
+    const remaining = Math.max(0, d.fin.daysInMonth - d.fin.slot);
+    const members = Math.max(1, d.memberCount || 0);
+    const marginF = Math.max(0, state.margin) / 100;
+    const C = d.clubMonthly, P = d.clubProjected;
+    const drift = (nowB, prevB) =>
+      (known(nowB) && known(prevB)) ? nowB - prevB : 0;
+    const target = (gap, dir, rankNum, verb) => {
+      const rank = rankName(rankNum);
+      const hasRank = known(rankNum) && !!rank;
+      if (!known(gap)) return { verb, rank, ok: false, reason: hasRank ? "no-tier" : "top" };
+      const total = C + dir * gap;
+      if (remaining <= 0) return { verb, rank, target: total, ok: false, reason: "done" };
+      const dr = dir < 0
+        ? drift(t.point - gap, t.yPoint - t.yLower)
+        : drift(t.point + gap, t.yPoint + t.yNext);
+      const projectedTotal = total + dr * remaining;
+      const requiredPace = dr + (total - C) / remaining;   // club fans / day
+      const quota = Math.max(0, requiredPace) / members * (1 + marginF);
+      return {
+        verb, rank, target: total, drift: dr, projectedTotal,
+        safe: quota <= 0, projected: P >= projectedTotal, ok: true, value: quota
+      };
+    };
+    // Current per-member / day pace over the remaining days, from the same
+    // straight-line projection the tiles label with.
+    const pace = remaining > 0 ? (P - C) / (remaining * members) : 0;
+    return {
+      remaining, members, margin: state.margin, pace,
+      tierKnown: known(t.rank),
+      keep: target(t.lower, -1, t.rank, "Keep"),
+      next: target(t.next, 1, known(t.rank) ? t.rank + 1 : null, "Reach")
+    };
+  }
+
+  function deltaTag(label, val) {
+    const cls = val > 0 ? "up" : val < 0 ? "down" : "flat";
+    return `<span class="k">${label}</span> <b class="${cls}" title="${nf(val)}">${signed(val)}</b>`;
+  }
+
+  function recTile(r, m) {
+    if (!r || (!r.ok && r.reason !== "done")) return "";
+    const title = r.rank ? `${r.verb} rank ${r.rank}` : r.verb;
+    if (!r.ok) {
+      return `<div class="rec"><div class="label">${title}</div>` +
+        `<div class="value faint">—</div><div class="sub">month complete</div></div>`;
+    }
+    const Q = Number(state.quota) || 0;
+    const deltas = `<div class="sub">` +
+      deltaTag("vs quota", r.value - Q) + ` · ` +
+      deltaTag("vs pace", r.value - m.pace) + `</div>`;
+    if (r.safe) {
+      const buffer = state.data.clubMonthly - r.target;
+      // A "Reach" bar can drift below the club total, making the current buffer
+      // negative even though the projection clears it. Don't label that "above floor".
+      if (buffer <= 0) {
+        return `<div class="rec good"><div class="label">${title}</div>` +
+          `<div class="value faint">—</div>` +
+          `<div class="sub">no quota needed · already projected to clear</div>` +
+          deltas + `</div>`;
+      }
+      const cushion = (m.remaining > 0 && m.members > 0) ? buffer / (m.remaining * m.members) : 0;
+      return `<div class="rec good"><div class="label">${title}</div>` +
+        `<div class="value" title="${nf(buffer)}">${compact(buffer)} <small>above floor</small></div>` +
+        `<div class="sub">no quota needed · cushion ${compact(cushion)} / day</div>` +
+        deltas + `</div>`;
+    }
+    const cls = r.verb === "Reach" ? "warn" : "good";
+    return `<div class="rec ${cls}"><div class="label">${title}</div>` +
+      `<div class="value" title="${nf(r.value)}">${compact(r.value)} <small>/ day</small></div>` +
+      deltas +
+      `<div class="sub">${r.projected ? "projected to clear" : "projected short"} · ${
+        r.verb === "Reach" ? "projected target" : "projected floor"} ${compact(r.projectedTotal)}</div></div>`;
+  }
+
+  function renderRecs() {
+    const d = state.data;
+    const grid = $("recGrid"), note = $("recNote");
+    if (!grid || !note) return;
+    if (!d) { grid.innerHTML = ""; note.textContent = ""; return; }
+    const m = recModel(d);
+    if (!m.tierKnown) {
+      grid.innerHTML = '<div class="rec-empty">Rank tier data is unavailable for this club.</div>';
+      note.textContent = "";
+      return;
+    }
+    grid.innerHTML = (recTile(m.keep, m) + recTile(m.next, m)) ||
+      '<div class="rec-empty">No rank targets available.</div>';
+    const parts = [
+      `${m.remaining} day${m.remaining === 1 ? "" : "s"} left`,
+      `${d.memberCount || 0} present member${d.memberCount === 1 ? "" : "s"}`,
+      `+${m.margin}% safety margin on the required pace`,
+      (m.keep.drift || m.next.drift)
+        ? "tier bars projected by their 1-day drift"
+        : "tier bars held static (no yesterday data)"
+    ];
+    note.textContent = parts.join(" · ");
+  }
+
+  const COLS = [
+    { k: "rank",  label: "#",            sort: false },
+    { k: "name",  label: "Trainer",      sort: true  },
+    { k: "monthly", label: "Monthly",    sort: true  },
+    { k: "today",  label: "Today",       sort: true  },
+    { k: "daily",  label: "Daily avg",   sort: true  },
+    { k: "pace",   label: "Quota pace",  sort: false },
+    { k: "deficit", label: "vs Quota",   sort: true  },
+    { k: "projected", label: "Projected", sort: true }
+  ];
+
+  function sortedRows() {
+    const q = state.search.trim().toLowerCase();
+    let rows = state.data.rows.slice();
+    if (q) rows = rows.filter((r) => (r.name || "").toLowerCase().includes(q) || (r.id || "").includes(q));
+    const active = rows.filter((r) => r.present && !r.inactive);
+    const dead = rows.filter((r) => !r.present || r.inactive);
+    const cmp = {
+      deficit: (a, b) => (b.deficit || 0) - (a.deficit || 0),
+      monthly: (a, b) => (b.monthly || 0) - (a.monthly || 0),
+      daily: (a, b) => (b.dailyAvg || 0) - (a.dailyAvg || 0),
+      projected: (a, b) => (b.projected || 0) - (a.projected || 0),
+      today: (a, b) => (b.todayFinal || 0) - (a.todayFinal || 0),
+      name: (a, b) => String(a.name).localeCompare(String(b.name))
+    }[state.sort] || ((a, b) => (b.deficit || 0) - (a.deficit || 0));
+    active.sort(cmp);
+    dead.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return active.concat(dead);
+  }
+
+  // Quota-pace bar. Below 100%: width-proportional amber/green/red.
+  // At/above 100%: the bar stays full width and overshoot is encoded as color.
+  // 5 stops at 100/200/300/400/500% ramp green -> sky; each band paints the
+  // previous stop as background and the next stop as a fractional-width fill.
+  // >=500% clamps to a sky background with a static rainbow fill.
+  const PACE_STOPS = ["#81c784", "#7ad49f", "#73e0c6", "#6bddeb", "#64b5f6"];
+  const PACE_RAINBOW = "linear-gradient(90deg,#ff8a80,#ffd180,#ffff8d,#81c784,#64b5f6,#b388ff)";
+
+  function paceBarStyle(pace) {
+    if (!(pace > 0)) return { width: 0, color: "var(--red)", bg: "" };
+    if (pace >= 5) return { width: 100, color: PACE_RAINBOW, bg: PACE_STOPS[4] };
+    if (pace >= 1) {
+      const i = Math.min(PACE_STOPS.length - 2, Math.floor(pace) - 1);
+      const width = Math.round((pace - Math.floor(pace)) * 1000) / 10;
+      return { width, color: PACE_STOPS[i + 1], bg: PACE_STOPS[i] };
+    }
+    const color = pace >= 0.95 ? "var(--amber)" : "var(--red)";
+    return { width: Math.max(2, Math.min(100, pace * 100)), color, bg: "" };
+  }
+
+  function paceBar(pace, s) {
+    s = s || paceBarStyle(pace);
+    return `<div class="bar"${s.bg ? ` style="background:${s.bg}"` : ""}>` +
+      `<i style="width:${s.width}%;background:${s.color}"></i></div>`;
+  }
+
+  // Resolve the configured current player against every row (not just the
+  // filtered/sorted view). ID wins; a name must match exactly one member.
+  function resolveCurrentPlayer() {
+    const rows = (state.data && state.data.rows) || [];
+    if (state.playerId) {
+      return rows.find((r) => r.id && String(r.id) === String(state.playerId)) || null;
+    }
+    const want = String(state.playerName || "").trim().toLowerCase();
+    if (!want) return null;
+    const hits = rows.filter((r) => String(r.name || "").trim().toLowerCase() === want);
+    return hits.length === 1 ? hits[0] : null;
+  }
+  function meStar(me, r) {
+    return me === r ? '<span class="me-star" title="You">\u2605</span> ' : "";
+  }
+  function updatePlayerNote() {
+    const el = $("playerNote");
+    if (!el) return;
+    if (!state.playerId && !state.playerName) { el.textContent = ""; return; }
+    if (!state.data) { el.textContent = ""; return; }
+    const me = resolveCurrentPlayer();
+    if (me) {
+      el.textContent = "Highlighting " + me.name + (me.id ? " (ID " + me.id + ")" : "") + ".";
+    } else if (state.playerId) {
+      el.textContent = "No member with player ID " + state.playerId + " in this club.";
+    } else {
+      el.textContent = "No unique member matches the name \u201c" + state.playerName + "\u201d.";
+    }
+  }
+
+  function renderTable() {
+    const d = state.data;
+    const rows = sortedRows();
+    const me = resolveCurrentPlayer();
+    $("tableNote").textContent =
+      `${rows.length} trainers · quota ${compact(state.quota)}/day · ` +
+      `expected through day ${d.fin.slot}: ${compact(state.quota * d.fin.slot)} per present member` +
+      (state.live ? " · live column shows in-progress JST day" : "");
+
+    $("thead").innerHTML = COLS.map((col) => {
+      const on = state.sort === col.k;
+      return `<th class="${col.sort ? "" : "no-sort"}" data-sort="${col.sort ? col.k : ""}">${col.label}${on ? ' <span class="arrow">▼</span>' : ""}</th>`;
+    }).join("");
+
+    let rank = 0;
+    $("tbody").innerHTML = rows.map((r) => {
+      const inactive = r.inactive || !r.present;
+      const meCls = me === r ? " current-player" : "";
+      if (!inactive) rank++;
+      if (!r.present) {
+        return `<tr class="inactive${meCls}"><td class="rank">—</td>
+          <td class="trainer">${meStar(me, r)}${esc(r.name)} <span class="id">ID ${esc(r.id)}</span>${roleTag(r.role)}</td>
+          <td colspan="6" class="faint">not in this competition month</td></tr>`;
+      }
+      if (r.inactive) {
+        return `<tr class="inactive${meCls}"><td class="rank">—</td>
+          <td class="trainer">${meStar(me, r)}${esc(r.name)} <span class="id">ID ${esc(r.id)}</span>${roleTag(r.role)}</td>
+          <td class="num">${compact(r.monthly)}</td><td class="num">—</td><td class="num">—</td>
+          <td colspan="2" class="faint">left / inactive</td>
+          <td class="num">—</td></tr>`;
+      }
+      const rk = rank <= 3 ? ` r${rank}` : "";
+      const bar = paceBarStyle(r.pace);
+      const sel = r.id && state.selectedId === r.id;
+      const todayCell = state.live && r.liveToday != null
+        ? `<span class="pos">+${compact(r.liveToday)}</span> <span class="faint">live</span>`
+        : `<span class="${r.todayFinal > 0 ? "pos" : ""}">+${compact(r.todayFinal)}</span>`;
+      return `<tr class="${sel ? "selected" : ""}${meCls}"${r.id ? ` data-id="${esc(r.id)}"` : ""}>
+        <td class="rank${rk}">${rank}</td>
+        <td class="trainer">${meStar(me, r)}${esc(r.name)} <span class="id">ID ${esc(r.id)}</span>${roleTag(r.role)}</td>
+        <td class="num">${compact(r.monthly)}</td>
+        <td class="num">${todayCell}</td>
+        <td class="num">${compact(r.dailyAvg)}</td>
+        <td><div class="pace">${paceBar(r.pace, bar)}
+          <small style="color:${bar.bg || bar.color}">${pct(r.pace)}</small></div></td>
+        <td class="num ${r.deficit >= 0 ? "pos" : "neg"}">${signed(r.deficit)}</td>
+        <td class="num" title="${nf(r.projected)}">${compact(r.projected)}
+          <span class="${r.projectedDeficit >= 0 ? "pos" : "neg"}">(${signed(r.projectedDeficit)})</span></td>
+      </tr>`;
+    }).join("");
+  }
+
+  function renderCards() {
+    const rows = sortedRows();
+    const me = resolveCurrentPlayer();
+    let rank = 0;
+    $("cards").innerHTML = rows.map((r) => {
+      const inactive = r.inactive || !r.present;
+      const meCls = me === r ? " current-player" : "";
+      if (!inactive) rank++;
+      const nameId = `${meStar(me, r)}${esc(r.name)} <span class="id">ID ${esc(r.id)}</span>${roleTag(r.role)}`;
+      if (!r.present) {
+        return `<div class="mcard inactive${meCls}">
+          <div class="mrow1"><span class="mname">${nameId}</span></div>
+          <div class="mnote">not in this competition month</div></div>`;
+      }
+      const rk = rank <= 3 ? ` r${rank}` : "";
+      const bar = paceBarStyle(r.pace);
+      const liveStat = state.live
+        ? `<div class="mstat"><span class="label">Today (live)</span>
+            <span class="mval pos">+${compact(r.liveToday != null ? r.liveToday : r.todayFinal)}</span></div>`
+        : "";
+      if (r.inactive) {
+        return `<div class="mcard inactive${meCls}">
+          <div class="mrow1"><span class="mname">${nameId}</span>
+            <span class="mmonthly">${compact(r.monthly)}<small>monthly</small></span></div>
+          <div class="mnote">left / inactive</div></div>`;
+      }
+      const sel = r.id && state.selectedId === r.id;
+      return `<div class="mcard${sel ? " selected" : ""}${meCls}"${r.id ? ` data-id="${esc(r.id)}"` : ""}>
+        <div class="mrow1">
+          <span class="rank${rk}">${rank}</span>
+          <span class="mname">${nameId}</span>
+          <span class="mmonthly">${compact(r.monthly)}<small>monthly</small></span>
+        </div>
+        <div class="mpace"><div class="pace">
+          ${paceBar(r.pace, bar)}
+          <small style="color:${bar.bg || bar.color}">${pct(r.pace)}</small>
+        </div></div>
+        <div class="mgrid">
+          <div class="mstat"><span class="label">vs Quota</span>
+            <span class="mval ${r.deficit >= 0 ? "pos" : "neg"}">${signed(r.deficit)}</span></div>
+          <div class="mstat"><span class="label">Projected</span>
+            <span class="mval">${compact(r.projected)}</span></div>
+          ${liveStat}
+        </div>
+      </div>`;
+    }).join("");
+  }
+  function renderRows() { renderTable(); renderCards(); updatePlayerNote(); }
+
+  function roleTag(role) {
+    if (role === "leader") return '<span class="role leader">leader</span>';
+    if (role === "officer") return '<span class="role officer">officer</span>';
+    return "";
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function localTzName(d) {
+    try {
+      const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(d || new Date());
+      const tz = parts.find((p) => p.type === "timeZoneName");
+      if (tz && tz.value) return tz.value;
+    } catch (e) {}
+    const off = -(d || new Date()).getTimezoneOffset() / 60;
+    return "UTC" + (off >= 0 ? "+" : "") + off;
+  }
+  function clockLabel(d, tz) {
+    if (tz === "local") return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + " " + localTzName(d);
+    return jstWallClock(d).toISOString().slice(11, 16) + " JST";
+  }
+  function fmtTs(iso, tz) {
+    tz = tz || state.tz || "jst";
+    try {
+      const d = new Date(iso);
+      if (tz === "local") {
+        return pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + " " +
+          pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + " " + localTzName(d);
+      }
+      const j = jstWallClock(d);
+      return j.toISOString().slice(5, 16).replace("T", " ") + " JST";
+    } catch (e) { return iso; }
+  }
+  function renderFreshPill() {
+    const el = $("freshPill");
+    if (!el) return;
+    const c = state.data && state.data.circle;
+    if (!c) return;
+    el.textContent = c.last_updated ? `updated ${fmtTs(c.last_updated)}` : "live";
+    const showing = state.tz === "local" ? "your local time" : "JST";
+    const other = state.tz === "local" ? "JST" : "your local time";
+    el.title = `Updated time in ${showing} — click for ${other}`;
+    el.setAttribute("aria-label", el.title);
+  }
+  function renderFootTime() {
+    const el = $("footTime");
+    if (!el) return;
+    const now = new Date();
+    el.textContent = clockLabel(now, state.tz) + " · checked " + now.toLocaleTimeString();
+  }
+
+  function updateRankToggles() {
+    const now = $("rankNowToggle"), proj = $("rankProjToggle");
+    if (now) { now.classList.toggle("on", state.rankNow); now.classList.toggle("off", !state.rankNow); now.setAttribute("aria-pressed", String(state.rankNow)); }
+    if (proj) { proj.classList.toggle("on", state.rankProj); proj.classList.toggle("off", !state.rankProj); proj.setAttribute("aria-pressed", String(state.rankProj)); }
+  }
+
+  function updateLiveToggle() {
+    const b = $("liveToggle");
+    if (!b) return;
+    b.classList.toggle("on", state.live);
+    b.classList.toggle("off", !state.live);
+    b.setAttribute("aria-pressed", String(state.live));
+    b.title = state.live ? "Hide in-progress day" : "Overlay in-progress day";
+  }
+
+  // ---------------------------------------------------------------- chart
+  // Per-member chart data. The quota target runs from the join day, so a
+  // mid-month joiner is only charged for present days:
+  // (joinedSlot, 0) -> (N, quota * (N - joinedSlot)).
+  function playerChart(d, id) {
+    const row = (d.rows || []).find((r) => r.present && !r.inactive && r.id === String(id));
+    if (!row || !row.series) return null;
+    const N = d.fin.daysInMonth;
+    const joined = Math.max(0, Math.min(row.joinedSlot || 0, N));
+    const series = [];
+    for (let s = 0; s <= d.fin.slot; s++) series.push(at(row.series, s));
+    const last = series.length ? series[series.length - 1] : 0;
+    // Average present member's finalized daily rate, for the "club pace" line.
+    const clubPace = d.fin.slot > 0 ? (d.clubMonthly / d.fin.slot) / Math.max(1, d.memberCount || 0) : 0;
+    // Per-member daily pace the club needs to reach the next tier (projected,
+    // drift + margin), for the "next rank pace" line.
+    const rm = recModel(d);
+    const nextPace = (rm.next && rm.next.ok && isFinite(rm.next.value)) ? Math.max(0, rm.next.value) : null;
+    return {
+      kind: "player", name: row.name, series, last,
+      targetStart: joined, targetEnd: state.quota * (N - joined),
+      clubPace, clubTargetEnd: clubPace * (N - joined),
+      nextPace, nextPaceEnd: nextPace != null ? nextPace * (N - joined) : 0,
+      nextRank: rm.next ? rm.next.rank : "",
+      projEnd: row.projected || 0
+    };
+  }
+  function clubChart(d) {
+    const N = d.fin.daysInMonth;
+    const chargeable = d.memberCount || 1;
+    const last = d.cumulative[d.cumulative.length - 1] || 0;
+    return {
+      kind: "club", series: d.cumulative, last,
+      targetStart: 0, targetEnd: state.quota * chargeable * N,
+      projEnd: d.fin.slot > 0 ? (last / d.fin.slot) * N : last
+    };
+  }
+  // The top chart is always the club view; the focused member's series lives in
+  // its own card (renderPlayerSections).
+  function chartData(d) {
+    return clubChart(d);
+  }
+  function updateChartChrome() {
+    const who = $("chartWho");
+    if (who) who.textContent = "Club";
+    const toggles = $("chartToggles");
+    if (toggles) toggles.classList.remove("hidden");
+  }
+
+  function drawChart(d) {
+    updateChartChrome();
+    drawChartOn($("chart"), chartData(d), d);
+  }
+  function drawChartOn(canvas, cd, d) {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const N = d.fin.daysInMonth;
+    const sel = cd.kind === "player";
+    const last = cd.last;
+    const targetEnd = cd.targetEnd;
+    const projEnd = cd.projEnd;
+    const clubTargetEnd = sel ? (cd.clubTargetEnd || 0) : 0;
+    const nextPaceEnd = sel ? (cd.nextPaceEnd || 0) : 0;
+
+    // Rank-tier requirement bars (club chart only): above = club total +
+    // fans_to_next_tier, below = club total - fans_to_lower_tier, for both the
+    // current/finalized total ("now") and the projection to month end.
+    const tier = d.tier || {};
+    const curRank = rankName(tier.rank);
+    const nextRank = rankName(tier.rank != null ? tier.rank + 1 : null);
+    const nextLbl = "next rank" + (nextRank ? " " + nextRank : "");
+    const curLbl = "current rank" + (curRank ? " " + curRank : "");
+    const TIER_GREEN = "129,199,132", TIER_RED = "229,115,115";
+    const tierBars = [];
+    const bar = (v, label, rgb, dash, kind, pos) => ({ v, label, color: `rgba(${rgb},.5)`, text: `rgba(${rgb},.95)`, dash, kind, pos });
+    if (!sel) {
+      if (tier.next != null) {
+        tierBars.push(bar(last + tier.next, "now", TIER_GREEN, false, "real", "above"));
+        tierBars.push(bar(projEnd + tier.next, "projection", TIER_GREEN, true, "proj", "above"));
+      }
+      if (tier.lower != null) {
+        tierBars.push(bar(last - tier.lower, "now", TIER_RED, false, "real", "below"));
+        tierBars.push(bar(projEnd - tier.lower, "projection", TIER_RED, true, "proj", "below"));
+      }
+    }
+    const shownBars = sel ? [] : tierBars.filter((b) => (b.kind === "real" ? state.rankNow : state.rankProj));
+
+    let maxY = Math.max(last, targetEnd, projEnd, clubTargetEnd, nextPaceEnd, ...shownBars.map((b) => b.v)) * 1.05;
+    if (!isFinite(maxY) || maxY <= 0) maxY = 1;
+
+    // legend: series + (club only) the rank groups
+    ctx.font = "13px Inter, sans-serif";
+    const lg = [
+      ["#64b5f6", [], "actual"],
+      ["rgba(100,181,246,.85)", [2, 4], "projection"],
+      ["rgba(255,183,77,.9)", [6, 5], "quota pace"]
+    ];
+    if (!sel && (state.rankNow || state.rankProj)) {
+      if (tier.next != null) lg.push([`rgba(${TIER_GREEN},.95)`, [], nextLbl]);
+      if (tier.lower != null) lg.push([`rgba(${TIER_RED},.95)`, [], curLbl]);
+    }
+    if (sel) lg.push(["rgba(129,199,132,.9)", [6, 5], "club pace"]);
+    if (sel && cd.nextPace != null) lg.push(["rgba(186,104,200,.9)", [2, 4], "next rank pace" + (cd.nextRank ? " " + cd.nextRank : "")]);
+    const pad = { l: 58, r: 16, t: 14, b: 26 };
+    const legendLineH = 17;
+    let lx = pad.l + 6, ly = pad.t + 2, legendRows = 1;
+    const legendItems = [];
+    for (const [col, dash, label] of lg) {
+      const w = 23 + ctx.measureText(label).width;
+      if (lx > pad.l + 6 && lx + w > W - pad.r) { lx = pad.l + 6; ly += legendLineH; legendRows++; }
+      legendItems.push({ x: lx, y: ly, col, dash, label });
+      lx += w + 18;
+    }
+
+    const iw = W - pad.l - pad.r;
+    const plotTop = pad.t + legendRows * legendLineH;   // keep the plot below the legend
+    const ih = H - plotTop - pad.b;
+
+    const X = (day) => pad.l + (day / N) * iw;
+    const Y = (v) => plotTop + ih - (v / maxY) * ih;
+
+    // grid
+    ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.fillStyle = "rgba(255,255,255,.45)";
+    ctx.font = "13px Inter, sans-serif"; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const v = (maxY / 4) * i, y = Y(v);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+      ctx.fillText(compact(v), 6, y + 5);
+    }
+    ctx.fillText("day 0", pad.l - 8, H - 8);
+    ctx.fillText("day " + N, W - pad.r - 34, H - 8);
+
+    // quota pace line
+    ctx.strokeStyle = "rgba(255,183,77,.75)"; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(X(cd.targetStart), Y(0)); ctx.lineTo(X(N), Y(targetEnd)); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // club pace line (player chart only): what an average member earns per day
+    if (sel) {
+      ctx.strokeStyle = "rgba(129,199,132,.8)"; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(X(cd.targetStart), Y(0)); ctx.lineTo(X(N), Y(clubTargetEnd)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // next rank pace line (player chart only): per-member pace to reach the next tier
+    if (sel && cd.nextPace != null) {
+      ctx.strokeStyle = "rgba(186,104,200,.85)"; ctx.setLineDash([2, 4]); ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(X(cd.targetStart), Y(0)); ctx.lineTo(X(N), Y(nextPaceEnd)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // rank-tier bars: short and local to the data points (now -> current day,
+    // projection -> last two days). "next rank" labels sit above the bar and
+    // "current rank" labels below, so a line never crosses its label. Labels go
+    // left of the data point at day 15+, right otherwise (projection is always left).
+    const realX = X(d.fin.slot);
+    const barHalf = Math.max(12, (iw / N) * 2);
+    const projX0 = X(Math.max(0, N - 2)), projX1 = X(N);
+    ctx.font = "12px Inter, sans-serif";
+    for (const b of shownBars) {
+      const y = Y(b.v);
+      const x0 = b.kind === "real" ? realX - barHalf : projX0;
+      const x1 = b.kind === "real" ? realX + barHalf : projX1;
+      ctx.strokeStyle = b.color; ctx.lineWidth = 1.6; ctx.setLineDash(b.dash ? [5, 4] : []);
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = b.text;
+      const toLeft = (b.kind === "real" ? d.fin.slot : N - 1) >= 15;
+      ctx.textAlign = toLeft ? "right" : "left";
+      const labelY = b.pos === "below"
+        ? Math.min(H - pad.b - 2, y + 11)
+        : Math.max(plotTop + 9, y - 4);
+      ctx.fillText(b.label, toLeft ? x0 - 4 : x1 + 4, labelY);
+    }
+    ctx.textAlign = "left";
+
+    // actual cumulative
+    ctx.strokeStyle = "#64b5f6"; ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    cd.series.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+
+    // projection segment (dotted blue)
+    ctx.strokeStyle = "rgba(100,181,246,.85)"; ctx.setLineDash([2, 4]); ctx.lineCap = "round"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(X(d.fin.slot), Y(last)); ctx.lineTo(X(N), Y(projEnd)); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineCap = "butt";
+
+    // fill under actual
+    ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+    cd.series.forEach((v, i) => ctx.lineTo(X(i), Y(v)));
+    ctx.lineTo(X(cd.series.length - 1), Y(0)); ctx.closePath();
+    ctx.fillStyle = "rgba(100,181,246,.10)"; ctx.fill();
+
+    // legend (positions computed above; wraps to extra rows on narrow canvases)
+    ctx.font = "13px Inter, sans-serif";
+    for (const it of legendItems) {
+      ctx.strokeStyle = it.col; ctx.lineWidth = 2.5; ctx.setLineDash(it.dash);
+      ctx.beginPath(); ctx.moveTo(it.x, it.y); ctx.lineTo(it.x + 18, it.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fillText(it.label, it.x + 23, it.y + 5);
+    }
+  }
+
+  // ------------------------------------------------------------ focused player
+  // The member the two player cards describe: an explicitly selected member, or
+  // the configured current player when nothing is selected. Absent/inactive
+  // members (no series) are never focused.
+  function focusedRow(d) {
+    if (!d || !d.rows) return null;
+    if (state.selectedId) {
+      const hit = d.rows.find((r) =>
+        r.present && !r.inactive && r.id === String(state.selectedId));
+      if (hit) return hit;
+    }
+    const me = resolveCurrentPlayer();
+    return (me && me.present && !me.inactive && me.series) ? me : null;
+  }
+  function focusedIsCurrentPlayer(d) {
+    const me = resolveCurrentPlayer();
+    return !!(me && me === focusedRow(d));
+  }
+  function drawPlayerChart(d, r) {
+    const cd = playerChart(d, r.id);
+    if (cd) drawChartOn($("playerChart"), cd, d);
+  }
+  function renderPlayerSections() {
+    const d = state.data;
+    const chartCard = $("playerChartCard"), recsCard = $("playerRecsCard");
+    if (!chartCard || !recsCard) return;
+    const r = d ? focusedRow(d) : null;
+    if (!r) {
+      chartCard.classList.add("hidden");
+      recsCard.classList.add("hidden");
+      return;
+    }
+    const gold = focusedIsCurrentPlayer(d);
+    chartCard.classList.remove("hidden");
+    recsCard.classList.remove("hidden");
+    chartCard.classList.toggle("gold", gold);
+    recsCard.classList.toggle("gold", gold);
+    chartCard.classList.toggle("sel", !gold);
+    recsCard.classList.toggle("sel", !gold);
+    const who = $("playerChartWho"); if (who) who.textContent = r.name;
+    const nameEl = $("playerRecName"); if (nameEl) nameEl.textContent = r.name;
+    drawPlayerChart(d, r);
+    renderPlayerRecs(d, r);
+  }
+  // Player recommendations: daily fans needed to finish the month on the daily
+  // quota (catch-up when behind), to match the current average club member's
+  // daily pace, and to reach the next club rank tier.
+  function playerRecModel(d, r) {
+    const N = d.fin.daysInMonth;
+    const remaining = Math.max(0, N - d.fin.slot);
+    const Q = Number(state.quota) || 0;
+    const members = Math.max(1, d.memberCount || 0);
+    const quotaTarget = Q * N;
+    const keepQuota = remaining > 0 ? Math.max(0, (quotaTarget - r.monthly) / remaining) : null;
+    const clubPace = d.fin.slot > 0 ? (d.clubMonthly / d.fin.slot) / members : 0;
+    // Per-member daily pace to reach the next tier, from the club "Reach" target
+    // (drift + margin adjusted) — the same value the player chart's next-rank
+    // pace line draws.
+    const rm = recModel(d);
+    const next = rm.next;
+    const reachNext = (next && next.ok) ? Math.max(0, next.value) : null;
+    return { remaining, Q, members, quotaTarget, keepQuota, clubPace, reachNext,
+      nextRank: next ? next.rank : "", nextReason: next ? next.reason : null,
+      tierKnown: !!rm.tierKnown };
+  }
+  function playerRecTile(title, target, cur, empty, missing) {
+    if (target == null) {
+      return `<div class="rec"><div class="label">${title}</div>` +
+        `<div class="value faint">—</div><div class="sub">${missing || "month complete"}</div></div>`;
+    }
+    if (target <= 0) {
+      return `<div class="rec good"><div class="label">${title}</div>` +
+        `<div class="value faint">—</div><div class="sub">${empty}</div></div>`;
+    }
+    const cls = cur >= target ? "good" : "warn";
+    return `<div class="rec ${cls}"><div class="label">${title}</div>` +
+      `<div class="value" title="${nf(target)}">${compact(target)} <small>/ day</small></div>` +
+      `<div class="sub">${deltaTag("vs current", target - cur)}</div>` +
+      `<div class="sub">current ${compact(cur)} / day</div></div>`;
+  }
+  function renderPlayerRecs(d, r) {
+    const grid = $("playerRecGrid"), note = $("playerRecNote");
+    if (!grid || !note) return;
+    const m = playerRecModel(d, r);
+    const reachTitle = "Reach " + (m.nextRank ? "rank " + m.nextRank : "next rank");
+    const reachMissing = !m.tierKnown ? "rank tier data unavailable"
+      : m.nextReason === "top" ? "already in the top rank"
+      : m.nextReason === "no-tier" ? "next rank data unavailable"
+      : "month complete";
+    grid.innerHTML =
+      playerRecTile("Keep up with quota", m.keepQuota, r.dailyAvg, "no quota needed · already at or above the quota target") +
+      playerRecTile("Keep up with club pace", m.clubPace, r.dailyAvg, "no club pace yet") +
+      playerRecTile(reachTitle, m.reachNext, r.dailyAvg, "no quota needed · already projected to clear", reachMissing);
+    note.textContent = [
+      `${m.remaining} day${m.remaining === 1 ? "" : "s"} left`,
+      `quota ${compact(m.Q)}/day`,
+      `avg club member pace ${compact(m.clubPace)}/day`,
+      m.reachNext > 0 ? `next rank pace ${compact(m.reachNext)}/day` : null,
+      `your current pace ${compact(r.dailyAvg)}/day`
+    ].filter(Boolean).join(" · ");
+  }
+
+  // ---------------------------------------------------------------- timer
+  function startTimer() {
+    stopTimer();
+    state.countdown = Math.round(REFRESH_MS / 1000);
+    state.timer = setInterval(() => {
+      state.countdown--;
+      if (state.countdown <= 0) { state.countdown = Math.round(REFRESH_MS / 1000); load({ silent: true }); }
+      updateFootTimer();
+    }, 1000);
+  }
+  function stopTimer() { if (state.timer) clearInterval(state.timer); state.timer = null; }
+  function updateFootTimer() {
+    const s = state.countdown;
+    const el = $("footTime");
+    if (!el || !state.data) return;
+    const now = new Date();
+    el.textContent = clockLabel(now, state.tz) +
+      " · auto-refresh in " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  // ---------------------------------------------------------------- events
+  const ICON_EYE = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>';
+  const ICON_EYE_OFF = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/><path d="M3 3l18 18"/></svg>';
+  function setKeyVisible(show) {
+    const key = $("setupKey"), eye = $("setupKeyEye");
+    if (!key || !eye) return;
+    key.type = show ? "text" : "password";
+    eye.innerHTML = show ? ICON_EYE_OFF : ICON_EYE;
+    eye.title = show ? "Hide API key" : "Show API key";
+    eye.setAttribute("aria-label", eye.title);
+    eye.setAttribute("aria-pressed", String(show));
+  }
+  $("setupKeyEye").addEventListener("click", () => setKeyVisible($("setupKey").type === "password"));
+  $("keyHelpBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    const help = $("keyHelp"), btn = $("keyHelpBtn");
+    const open = help.classList.contains("hidden");
+    help.classList.toggle("hidden", !open);
+    btn.setAttribute("aria-expanded", String(open));
+  });
+
+  function submitSetup() {
+    const id = parseCircleInput($("setupCircle").value);
+    if (!id) { setMsg("Enter a numeric circle ID or paste the uma.moe club URL.", false); return; }
+    const editingId = state.setupEditId;
+    const quota = parseQuota($("setupQuota").value);
+    const nameVal = $("setupName").value.trim();
+    const keyVal = $("setupKey").value.trim();
+    if (keyVal) state.apiKey = keyVal;
+    else if (!state.apiKey) { setMsg("Enter your uma.moe API key.", false); return; }
+    if (!editingId && getCircle(id)) {   // already saved: open it instead of overwriting
+      saveSettings();
+      exitEdit();
+      openClub(id);
+      return;
+    }
+    const patch = { quota: quota > 0 ? quota : 1000000 };
+    if (nameVal) { patch.name = nameVal; patch.customName = true; }
+    else { patch.customName = false; }
+    upsertCircle(id, patch);
+    if (editingId && String(id) !== String(state.circleId)) {
+      exitEdit();   // saved a non-active club: keep the current view
+      setMsg("Saved " + esc(patch.name || ("Circle " + id)) + ".", true);
+      return;
+    }
+    state.circleId = id;
+    state.quota = patch.quota;
+    state.selectedId = null;
+    state.data = null;   // never show the previous club's data under the new club
+    saveSettings();
+    if (editingId) exitEdit();
+    load();
+  }
+
+  function switchCircle(id) {
+    if (!id || String(id) === String(state.circleId)) return;
+    const rec = getCircle(id);
+    state.circleId = String(id);
+    if (rec && typeof rec.quota === "number" && rec.quota > 0) state.quota = rec.quota;
+    state.selectedId = null;
+    state.data = null;   // never show the previous club's data under the new club
+    saveSettings();
+    load();
+  }
+
+  function openClub(id) {
+    if (!id) return;
+    if (String(id) === String(state.circleId)) {
+      if (state.data) { showDashboard(); render(); startTimer(); }
+      return;
+    }
+    switchCircle(id);
+  }
+
+  $("circleSelect").addEventListener("change", (e) => switchCircle(e.target.value));
+  $("setupConnect").addEventListener("click", submitSetup);
+  $("setupCancel").addEventListener("click", exitEdit);
+  $("clubList").addEventListener("click", (e) => {
+    const row = e.target.closest(".club-row");
+    if (!row) return;
+    const btn = e.target.closest("button[data-act]");
+    if (btn) {
+      if (btn.dataset.act === "edit") startEdit(row.dataset.id);
+      else if (btn.dataset.act === "remove") removeCircle(row.dataset.id);
+      return;
+    }
+    openClub(row.dataset.id);
+  });
+  $("refreshBtn").addEventListener("click", () => load());
+  $("settingsBtn").addEventListener("click", () => {
+    const onSetup = !$("setupCard").classList.contains("hidden");
+    if (onSetup && state.data) { showDashboard(); render(); startTimer(); }
+    else { state.loadSeq++; setBusy(false); stopTimer(); showSetup(); }   // cancel any in-flight load
+  });
+  $("viewToggle").addEventListener("click", () => setView(state.view === "mobile" ? "pc" : "mobile"));
+  $("freshPill").addEventListener("click", () => {
+    if (!state.data) return;
+    state.tz = state.tz === "local" ? "jst" : "local";
+    saveTz();
+    renderFreshPill();
+    updateFootTimer();
+  });
+  $("rankNowToggle").addEventListener("click", () => {
+    state.rankNow = !state.rankNow; updateRankToggles(); if (state.data) drawChart(state.data);
+  });
+  $("rankProjToggle").addEventListener("click", () => {
+    state.rankProj = !state.rankProj; updateRankToggles(); if (state.data) drawChart(state.data);
+  });
+  $("quotaInput").addEventListener("input", () => formatQuotaInput($("quotaInput"), true));
+  $("quotaInput").addEventListener("change", () => {
+    state.quota = parseQuota($("quotaInput").value);
+    $("quotaInput").value = fmtQuota(state.quota);
+    if (state.circleId) upsertCircle(state.circleId, { quota: state.quota });
+    saveSettings();
+    if (state.data) load();
+  });
+  $("setupQuota").addEventListener("input", () => formatQuotaInput($("setupQuota"), true));
+  $("setupPlayer").addEventListener("input", () => {
+    setPlayerFromInput($("setupPlayer").value);
+    if (state.data) { renderRows(); renderPlayerSections(); }
+  });
+  $("setupPlayer").addEventListener("change", () => {
+    setPlayerFromInput($("setupPlayer").value);
+    $("setupPlayer").value = playerInputValue();
+    if (state.data) { renderRows(); renderPlayerSections(); }
+  });
+  $("marginInput").addEventListener("input", () => {
+    const v = parseFloat($("marginInput").value);
+    if (isFinite(v) && v >= 0) { state.margin = v; saveMargin(); if (state.data) renderRecs(); }
+  });
+  $("marginInput").addEventListener("change", () => {
+    let v = parseFloat($("marginInput").value);
+    if (!isFinite(v) || v < 0) v = 0;
+    state.margin = v;
+    $("marginInput").value = String(v);
+    saveMargin();
+    if (state.data) renderRecs();
+  });
+  $("searchInput").addEventListener("input", (e) => { state.search = e.target.value; renderRows(); });
+  $("sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; renderRows(); });
+  $("liveToggle").addEventListener("click", () => {
+    state.live = !state.live;
+    updateLiveToggle();
+    if (state.data) load({ silent: true });
+    else render();
+  });
+  $("thead").addEventListener("click", (e) => {
+    const th = e.target.closest("th");
+    if (!th || !th.dataset.sort) return;
+    state.sort = th.dataset.sort;
+    $("sortSelect").value = state.sort;
+    renderRows();
+  });
+  function selectMember(id) {
+    if (!id) return;
+    state.selectedId = state.selectedId === id ? null : id;   // click again to deselect
+    if (state.data) { renderRows(); renderPlayerSections(); }
+  }
+  $("tbody").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-id]");
+    if (tr) selectMember(tr.dataset.id);
+  });
+  $("cards").addEventListener("click", (e) => {
+    const card = e.target.closest(".mcard[data-id]");
+    if (card) selectMember(card.dataset.id);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || $("setupCard").classList.contains("hidden")) return;
+    if (e.target && e.target.tagName === "BUTTON") return;   // don't hijack focused buttons
+    submitSetup();
+  });
+
+  // ---------------------------------------------------------------- init
+  loadSettings();
+  loadMargin();
+  loadTz();
+  loadPlayer();
+  loadView();
+  applyView();
+  $("marginInput").value = String(state.margin);
+  $("setupPlayer").value = playerInputValue();
+  updateRankToggles();
+  updateLiveToggle();
+  const urlCircle = new URLSearchParams(location.search).get("circle");
+  if (urlCircle && !state.circleId) state.circleId = parseCircleInput(urlCircle);
+  if (state.circleId) {
+    const rec = getCircle(state.circleId);
+    if (rec && typeof rec.quota === "number" && rec.quota > 0) state.quota = rec.quota;
+  }
+  renderCircleList();
+  renderCircleSelect();
+  if (state.circleId) {
+    if (!getCircle(state.circleId)) upsertCircle(state.circleId, { quota: state.quota });
+    load();
+  } else {
+    showSetup();
+  }
+})();
+</script>
+</body>
+</html>
