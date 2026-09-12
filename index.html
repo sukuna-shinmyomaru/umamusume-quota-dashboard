@@ -812,8 +812,15 @@
       const expected = state.quota * presentDays;
       const deficit = monthly - expected;
       const pace = expected > 0 ? monthly / expected : (monthly > 0 ? 1 : 0);
-      const projected = fin.daysInMonth > 0 ? dailyAvg * fin.daysInMonth : monthly;
-      const projectedDeficit = projected - state.quota * fin.daysInMonth;
+      // Project only the remaining days from the member's current daily rate:
+      // don't credit a joiner with fans from before they were in the club.
+      const projected = fin.daysInMonth > 0
+        ? monthly + dailyAvg * Math.max(0, fin.daysInMonth - fin.slot)
+        : monthly;
+      // Month-end obligation charges only the days from the member's join slot,
+      // matching `expected` and the player quota target.
+      const quotaTarget = state.quota * Math.max(0, fin.daysInMonth - series.baseIdx);
+      const projectedDeficit = projected - quotaTarget;
       const liveToday = (state.live && samePeriod)
         ? Math.max(0, at(series, live.slot) - at(series, live.slot - 1)) : null;
       const leftClub = monthly === 0 && series.baseIdx <= fin.slot;
@@ -829,6 +836,10 @@
     const clubMonthly = present.reduce((a, r) => a + r.monthly, 0);
     const clubExpected = present.reduce((a, r) => a + r.expected, 0);
     const clubProjected = present.reduce((a, r) => a + r.projected, 0);
+    // Full-month quota obligation, join-aware: each present member is charged
+    // from their join slot, so mid-month joiners are not back-charged.
+    const clubQuotaTarget = present.reduce(
+      (a, r) => a + state.quota * Math.max(0, fin.daysInMonth - r.joinedSlot), 0);
     const met = present.filter((r) => r.deficit >= 0).length;
     const behind = present.length - met;
     const avgDaily = clubMonthly / Math.max(1, fin.slot);
@@ -846,15 +857,12 @@
       rank: num(payload.club_rank != null ? payload.club_rank : circle.club_rank),
       next: num(payload.fans_to_next_tier),
       lower: num(payload.fans_to_lower_tier),
-      yNext: num(payload.yesterday_fans_to_next_tier),
-      yLower: num(payload.yesterday_fans_to_lower_tier),
-      point: num(circle.monthly_point),
-      yPoint: num(circle.yesterday_points)
+      point: num(circle.monthly_point)
     };
 
     return {
       circle, rows, met, behind, clubMonthly, clubExpected, clubProjected,
-      avgDaily, cumulative, fin, memberCount: present.length, tier
+      clubQuotaTarget, avgDaily, cumulative, fin, memberCount: present.length, tier
     };
   }
 
@@ -978,20 +986,20 @@
     renderFootTime();
 
     const clubPace = d.clubExpected > 0 ? d.clubMonthly / d.clubExpected : 1;
-    const clubProjectedDeficit = d.clubProjected - state.quota * d.fin.daysInMonth * d.memberCount;
+    const clubProjectedDeficit = d.clubProjected - d.clubQuotaTarget;
 
-    // Rank tier thresholds use the same finalized "now" total the chart bars do.
+    // Rank tier thresholds use the same finalized "now" boundaries the chart
+    // bars and recommendations draw (API base, not the derived member sum).
     const tier = d.tier || {};
     const rankNow = rankName(tier.rank);
     const rankNext = rankName(tier.rank != null ? tier.rank + 1 : null);
     // Finalized global standing. The Live toggle only affects the table's Today
     // column, so the whole summary (like the chart) stays on the finalize marker.
     const monthlyRank = (d.circle && d.circle.monthly_rank != null) ? d.circle.monthly_rank : null;
-    const tierNow = (d.cumulative && d.cumulative.length)
-      ? d.cumulative[d.cumulative.length - 1] : d.clubMonthly;
+    const tb = tierThresholds(d);
     const rankParts = [];
-    if (tier.lower != null) rankParts.push(`${rankNow ? rankNow + " " : ""}floor ${compact(tierNow - tier.lower)}`);
-    if (tier.next != null) rankParts.push(`next${rankNext ? " " + rankNext : ""} ${compact(tierNow + tier.next)}`);
+    if (tb.floorNow != null) rankParts.push(`${rankNow ? rankNow + " " : ""}floor ${compact(tb.floorNow)}`);
+    if (tb.nextNow != null) rankParts.push(`next${rankNext ? " " + rankNext : ""} ${compact(tb.nextNow)}`);
 
     const stats = [
       { label: "Club monthly fans", value: compact(d.clubMonthly), sub: nf(d.clubMonthly) + " total" },
@@ -1005,7 +1013,7 @@
       { label: "Current rank", value: monthlyRank != null ? "#" + monthlyRank : (rankNow || "—"),
         sub: rankParts.join(" · ") || "tier data unavailable" },
       { label: "Projected month", value: compact(d.clubProjected),
-        cls: d.clubProjected >= state.quota * d.fin.daysInMonth * d.memberCount ? "good" : "warn",
+        cls: d.clubProjected >= d.clubQuotaTarget ? "good" : "warn",
         sub: signed(clubProjectedDeficit) + " vs full quota" }
     ];
     $("summary").innerHTML = stats.map((s) => `
@@ -1022,37 +1030,60 @@
   }
 
   // ------------------------------------------------------- recommendations
+  // Absolute rank thresholds (the total fans a club must hold to be in a tier)
+  // and their month-end projections. The API reports `fans_to_next_tier` /
+  // `fans_to_lower_tier` as gaps relative to its own club total
+  // (`circle.monthly_point`), so build each boundary from that base:
+  //   nextNow  = point + fans_to_next_tier
+  //   floorNow = point - fans_to_lower_tier
+  // Each boundary is a global score set by other clubs, so it is projected
+  // independently of our club's data: keep the boundary's month-to-date pace
+  // and extend it to month end. A boundary at `B` after `slot` of `N` days
+  // projects to `B * N / slot` (e.g. 10M at the halfway point -> 20M).
+  // This is the single source of truth for both the chart's projected rank bars
+  // and the quota recommendations, so they can never disagree.
+  function tierThresholds(d) {
+    const known = (v) => typeof v === "number" && isFinite(v);
+    const t = d.tier || {};
+    const slot = d.fin.slot, N = d.fin.daysInMonth;
+    const scale = (slot > 0 && N > 0) ? N / slot : 1;
+    const base = known(t.point) ? t.point : d.clubMonthly;
+    const out = {};
+    if (known(t.lower)) {
+      out.floorNow = base - t.lower;
+      out.floorProj = out.floorNow * scale;
+    }
+    if (known(t.next)) {
+      out.nextNow = base + t.next;
+      out.nextProj = out.nextNow * scale;
+    }
+    return out;
+  }
+
   // Recommended per-member daily quota to hold the current rank ("keep") or
-  // reach the one above ("reach"). Each tier bar is dynamic and driven by other
-  // clubs, so project it forward over the remaining days by its observed drift:
-  //   projectedBar = C + dir * gap + drift * remaining
-  //   quota = max(0, drift + (bar - C) / remaining) / members * (1 + margin)
-  // Drift uses the API's own current-vs-yesterday totals, so it is independent
-  // of the derived C. Without yesterday_* the drift is 0 and the bars stay
-  // static; a bar projected below C needs no quota ("safe").
+  // reach the one above ("reach"), from the projected boundaries above:
+  //   requiredPace = (boundaryProj - C) / remaining   // club fans / day
+  //   quota        = max(0, requiredPace) / members * (1 + margin)
+  // Using the projected boundary as the fixed target keeps the card consistent
+  // with the chart. A boundary projected below C needs no quota ("safe").
   function recModel(d) {
     const known = (v) => typeof v === "number" && isFinite(v);
     const t = d.tier || {};
+    const b = tierThresholds(d);
     const remaining = Math.max(0, d.fin.daysInMonth - d.fin.slot);
     const members = Math.max(1, d.memberCount || 0);
     const marginF = Math.max(0, state.margin) / 100;
     const C = d.clubMonthly, P = d.clubProjected;
-    const drift = (nowB, prevB) =>
-      (known(nowB) && known(prevB)) ? nowB - prevB : 0;
-    const target = (gap, dir, rankNum, verb) => {
+    const target = (now, proj, rankNum, verb) => {
       const rank = rankName(rankNum);
       const hasRank = known(rankNum) && !!rank;
-      if (!known(gap)) return { verb, rank, ok: false, reason: hasRank ? "no-tier" : "top" };
-      const total = C + dir * gap;
-      if (remaining <= 0) return { verb, rank, target: total, ok: false, reason: "done" };
-      const dr = dir < 0
-        ? drift(t.point - gap, t.yPoint - t.yLower)
-        : drift(t.point + gap, t.yPoint + t.yNext);
-      const projectedTotal = total + dr * remaining;
-      const requiredPace = dr + (total - C) / remaining;   // club fans / day
+      if (!known(now)) return { verb, rank, ok: false, reason: hasRank ? "no-tier" : "top" };
+      if (remaining <= 0) return { verb, rank, target: now, ok: false, reason: "done" };
+      const projectedTotal = known(proj) ? proj : now;
+      const requiredPace = (projectedTotal - C) / remaining;   // club fans / day
       const quota = Math.max(0, requiredPace) / members * (1 + marginF);
       return {
-        verb, rank, target: total, drift: dr, projectedTotal,
+        verb, rank, target: now, projectedTotal,
         safe: quota <= 0, projected: P >= projectedTotal, ok: true, value: quota
       };
     };
@@ -1062,8 +1093,8 @@
     return {
       remaining, members, margin: state.margin, pace,
       tierKnown: known(t.rank),
-      keep: target(t.lower, -1, t.rank, "Keep"),
-      next: target(t.next, 1, known(t.rank) ? t.rank + 1 : null, "Reach")
+      keep: target(b.floorNow, b.floorProj, t.rank, "Keep"),
+      next: target(b.nextNow, b.nextProj, known(t.rank) ? t.rank + 1 : null, "Reach")
     };
   }
 
@@ -1085,8 +1116,8 @@
       deltaTag("vs pace", r.value - m.pace) + `</div>`;
     if (r.safe) {
       const buffer = state.data.clubMonthly - r.target;
-      // A "Reach" bar can drift below the club total, making the current buffer
-      // negative even though the projection clears it. Don't label that "above floor".
+      // A "Reach" boundary can project below the club total, making the current
+      // buffer negative even though the projection clears it. Don't call that "above floor".
       if (buffer <= 0) {
         return `<div class="rec good"><div class="label">${title}</div>` +
           `<div class="value faint">—</div>` +
@@ -1124,9 +1155,7 @@
       `${m.remaining} day${m.remaining === 1 ? "" : "s"} left`,
       `${d.memberCount || 0} present member${d.memberCount === 1 ? "" : "s"}`,
       `+${m.margin}% safety margin on the required pace`,
-      (m.keep.drift || m.next.drift)
-        ? "tier bars projected by their 1-day drift"
-        : "tier bars held static (no yesterday data)"
+      "rank boundaries projected at their month-to-date pace"
     ];
     note.textContent = parts.join(" · ");
   }
@@ -1223,7 +1252,7 @@
     const me = resolveCurrentPlayer();
     $("tableNote").textContent =
       `${rows.length} trainers · quota ${compact(state.quota)}/day · ` +
-      `expected through day ${d.fin.slot}: ${compact(state.quota * d.fin.slot)} per present member` +
+      `expected through day ${d.fin.slot}: ${compact(d.clubExpected)} across present members` +
       (state.live ? " · live column shows in-progress JST day" : "");
 
     $("thead").innerHTML = COLS.map((col) => {
@@ -1386,28 +1415,42 @@
   }
 
   // ---------------------------------------------------------------- chart
-  // Per-member chart data. The quota target runs from the join day, so a
-  // mid-month joiner is only charged for present days:
-  // (joinedSlot, 0) -> (N, quota * (N - joinedSlot)).
+  // Join-aware quota plan for one member: the month-end target charges only the
+  // days from the join slot, and keepQuota is the flat daily rate from now that
+  // lands exactly on that target (0 when the member is already ahead). Shared by
+  // playerRecModel (the "Keep up with quota" tile) and playerChart (the chart's
+  // "quota from now" line) so the two can never disagree.
+  function memberQuotaPlan(d, joinedSlot, current) {
+    const N = d.fin.daysInMonth;
+    const remaining = Math.max(0, N - d.fin.slot);
+    const joined = Math.max(0, Math.min(joinedSlot || 0, N));
+    const quotaTarget = (Number(state.quota) || 0) * (N - joined);
+    const keepQuota = remaining > 0 ? Math.max(0, (quotaTarget - current) / remaining) : null;
+    return { remaining, joined, quotaTarget, keepQuota };
+  }
+  // Per-member chart data. The quota line runs from the member's current total
+  // to their join-aware month-end target, i.e. at the same keepQuota rate the
+  // "Keep up with quota" tile reports.
   function playerChart(d, id) {
     const row = (d.rows || []).find((r) => r.present && !r.inactive && r.id === String(id));
     if (!row || !row.series) return null;
     const N = d.fin.daysInMonth;
-    const joined = Math.max(0, Math.min(row.joinedSlot || 0, N));
     const series = [];
     for (let s = 0; s <= d.fin.slot; s++) series.push(at(row.series, s));
     const last = series.length ? series[series.length - 1] : 0;
+    const plan = memberQuotaPlan(d, row.joinedSlot, last);
     // Average present member's finalized daily rate, for the "club pace" line.
     const clubPace = d.fin.slot > 0 ? (d.clubMonthly / d.fin.slot) / Math.max(1, d.memberCount || 0) : 0;
-    // Per-member daily pace the club needs to reach the next tier (projected,
-    // drift + margin), for the "next rank pace" line.
+    // Per-member daily pace the club needs to reach the next tier (time-scaled
+    // projected boundary, with margin), for the "next rank pace" line.
     const rm = recModel(d);
     const nextPace = (rm.next && rm.next.ok && isFinite(rm.next.value)) ? Math.max(0, rm.next.value) : null;
     return {
       kind: "player", name: row.name, series, last,
-      targetStart: joined, targetEnd: state.quota * (N - joined),
-      clubPace, clubTargetEnd: clubPace * (N - joined),
-      nextPace, nextPaceEnd: nextPace != null ? nextPace * (N - joined) : 0,
+      targetStart: plan.joined, targetEnd: plan.quotaTarget,
+      quotaPerDay: plan.keepQuota || 0,
+      clubPace, clubTargetEnd: clubPace * (N - plan.joined),
+      nextPace, nextPaceEnd: nextPace != null ? nextPace * (N - plan.joined) : 0,
       nextRank: rm.next ? rm.next.rank : "",
       projEnd: row.projected || 0
     };
@@ -1416,10 +1459,15 @@
     const N = d.fin.daysInMonth;
     const chargeable = d.memberCount || 1;
     const last = d.cumulative[d.cumulative.length - 1] || 0;
+    // Use the same month-end total the "Projected month" tile reports, so the
+    // chart's projection segment and the rank/recommendation math agree.
+    const projEnd = (typeof d.clubProjected === "number" && isFinite(d.clubProjected))
+      ? d.clubProjected : (d.fin.slot > 0 ? (last / d.fin.slot) * N : last);
     return {
       kind: "club", series: d.cumulative, last,
       targetStart: 0, targetEnd: state.quota * chargeable * N,
-      projEnd: d.fin.slot > 0 ? (last / d.fin.slot) * N : last
+      quotaPerDay: state.quota * chargeable,
+      projEnd
     };
   }
   // The top chart is always the club view; the focused member's series lives in
@@ -1455,9 +1503,9 @@
     const clubTargetEnd = sel ? (cd.clubTargetEnd || 0) : 0;
     const nextPaceEnd = sel ? (cd.nextPaceEnd || 0) : 0;
 
-    // Rank-tier requirement bars (club chart only): above = club total +
-    // fans_to_next_tier, below = club total - fans_to_lower_tier, for both the
-    // current/finalized total ("now") and the projection to month end.
+    // Rank-tier requirement bars (club chart only): the global threshold to
+    // reach the next tier and to hold the current one, shown for the finalized
+    // "now" and extended to month end at the boundary's month-to-date pace.
     const tier = d.tier || {};
     const curRank = rankName(tier.rank);
     const nextRank = rankName(tier.rank != null ? tier.rank + 1 : null);
@@ -1466,19 +1514,31 @@
     const TIER_GREEN = "129,199,132", TIER_RED = "229,115,115";
     const tierBars = [];
     const bar = (v, label, rgb, dash, kind, pos) => ({ v, label, color: `rgba(${rgb},.5)`, text: `rgba(${rgb},.95)`, dash, kind, pos });
+    // Same boundaries the recommendations use: "now" is the current global
+    // threshold, "projection" extends that threshold's month-to-date pace to
+    // month end (independent of the club's projection).
+    const tb = tierThresholds(d);
     if (!sel) {
-      if (tier.next != null) {
-        tierBars.push(bar(last + tier.next, "now", TIER_GREEN, false, "real", "above"));
-        tierBars.push(bar(projEnd + tier.next, "projection", TIER_GREEN, true, "proj", "above"));
+      if (tb.nextNow != null) {
+        tierBars.push(bar(tb.nextNow, "now", TIER_GREEN, false, "real", "above"));
+        tierBars.push(bar(tb.nextProj, "projection", TIER_GREEN, true, "proj", "above"));
       }
-      if (tier.lower != null) {
-        tierBars.push(bar(last - tier.lower, "now", TIER_RED, false, "real", "below"));
-        tierBars.push(bar(projEnd - tier.lower, "projection", TIER_RED, true, "proj", "below"));
+      if (tb.floorNow != null) {
+        tierBars.push(bar(tb.floorNow, "now", TIER_RED, false, "real", "below"));
+        tierBars.push(bar(tb.floorProj, "projection", TIER_RED, true, "proj", "below"));
       }
     }
     const shownBars = sel ? [] : tierBars.filter((b) => (b.kind === "real" ? state.rankNow : state.rankProj));
 
-    let maxY = Math.max(last, targetEnd, projEnd, clubTargetEnd, nextPaceEnd, ...shownBars.map((b) => b.v)) * 1.05;
+    // Where the quota takes the actual total from today to month end. The club
+    // chart sustains the configured quota; the player chart uses the catch-up
+    // rate to the member's join-aware target (see memberQuotaPlan).
+    const quotaPerDay = (typeof cd.quotaPerDay === "number")
+      ? cd.quotaPerDay
+      : ((N - cd.targetStart) > 0 ? targetEnd / (N - cd.targetStart) : 0);
+    const quotaFromNowEnd = last + quotaPerDay * Math.max(0, N - d.fin.slot);
+
+    let maxY = Math.max(last, targetEnd, projEnd, clubTargetEnd, nextPaceEnd, quotaFromNowEnd, ...shownBars.map((b) => b.v)) * 1.05;
     if (!isFinite(maxY) || maxY <= 0) maxY = 1;
 
     // legend: series + (club only) the rank groups
@@ -1486,7 +1546,7 @@
     const lg = [
       ["#64b5f6", [], "actual"],
       ["rgba(100,181,246,.85)", [2, 4], "projection"],
-      ["rgba(255,183,77,.9)", [6, 5], "quota pace"]
+      ["rgba(255,183,77,.95)", [6, 5], "quota from now"]
     ];
     if (!sel && (state.rankNow || state.rankProj)) {
       if (tier.next != null) lg.push([`rgba(${TIER_GREEN},.95)`, [], nextLbl]);
@@ -1523,9 +1583,9 @@
     ctx.fillText("day 0", pad.l - 8, H - 8);
     ctx.fillText("day " + N, W - pad.r - 34, H - 8);
 
-    // quota pace line
-    ctx.strokeStyle = "rgba(255,183,77,.75)"; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(X(cd.targetStart), Y(0)); ctx.lineTo(X(N), Y(targetEnd)); ctx.stroke();
+    // quota pace: forward path from the actual total at the configured rate.
+    ctx.strokeStyle = "rgba(255,183,77,.95)"; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(X(d.fin.slot), Y(last)); ctx.lineTo(X(N), Y(quotaFromNowEnd)); ctx.stroke();
     ctx.setLineDash([]);
 
     // club pace line (player chart only): what an average member earns per day
@@ -1642,16 +1702,15 @@
   // quota (catch-up when behind), to match the current average club member's
   // daily pace, and to reach the next club rank tier.
   function playerRecModel(d, r) {
-    const N = d.fin.daysInMonth;
-    const remaining = Math.max(0, N - d.fin.slot);
     const Q = Number(state.quota) || 0;
     const members = Math.max(1, d.memberCount || 0);
-    const quotaTarget = Q * N;
-    const keepQuota = remaining > 0 ? Math.max(0, (quotaTarget - r.monthly) / remaining) : null;
+    // Charge the member only for the days they were in the club, matching
+    // `expected` in compute() and the player chart's quota-pace line.
+    const { remaining, quotaTarget, keepQuota } = memberQuotaPlan(d, r.joinedSlot, r.monthly);
     const clubPace = d.fin.slot > 0 ? (d.clubMonthly / d.fin.slot) / members : 0;
     // Per-member daily pace to reach the next tier, from the club "Reach" target
-    // (drift + margin adjusted) — the same value the player chart's next-rank
-    // pace line draws.
+    // (time-scaled and margin adjusted) — the same value the player chart's
+    // next-rank pace line draws.
     const rm = recModel(d);
     const next = rm.next;
     const reachNext = (next && next.ok) ? Math.max(0, next.value) : null;

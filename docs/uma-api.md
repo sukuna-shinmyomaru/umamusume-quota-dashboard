@@ -120,30 +120,56 @@ presentDays   = F − baselineIndex        // mid-month joiners are not back-cha
 expected      = Q × presentDays
 deficit       = monthly − expected       // ≥ 0 → on pace, < 0 → behind
 dailyAvg      = monthly / max(1, presentDays)
-projected     = dailyAvg × daysInMonth   // straight-line to month end
-projectedDeficit = projected − Q × daysInMonth
+projected     = monthly + dailyAvg × (daysInMonth − finalSlot)  // join-aware to month end
+quotaTarget   = Q × (daysInMonth − baselineIndex)   // join-aware month-end obligation
+projectedDeficit = projected − quotaTarget
 ```
 
-Club aggregates sum the members above. The chart plots club cumulative fans per slot
-(solid blue) against the straight
-`Q × members × day` pace line (amber dashed) and a dotted blue straight-line projection
-to month end.
+Every month-end figure is join-aware: a member who joined mid-month is charged only from
+their join slot, so their projection never credits fans from before they were in the club.
+
+Club aggregates sum the members above. The "Projected month" summary stat shows
+`clubProjected = Σ member.projected` and compares it against the join-aware full-month
+obligation `clubQuotaTarget = Σ quotaTarget`. The chart plots club cumulative fans per slot
+(solid blue) against a dotted blue straight-line projection to month end ending at
+`clubProjected`, and the rank boundaries below. The **quota pace** is a forward amber segment
+from the current total:
+
+```
+quotaFromNowEnd = C + Q · members · (daysInMonth − finalSlot)
+```
+
+Projecting from the actual total answers "if we earn exactly the quota from now on, where do
+we finish?", so a club that is ahead of the schedule keeps its month-to-date surplus. A
+from-origin schedule line would instead end at `Q · members · daysInMonth` regardless of the
+surplus and can make a quota that comfortably holds the rank look like it barely does; the
+chart deliberately omits it. The "vs quota pace" summary stat still tracks schedule
+adherence.
 
 ## Rank-tier requirement bars
 
-`fans_to_next_tier` / `fans_to_lower_tier` are **gaps**, not totals: add/subtract them
-from the club's current fan total to get the tier thresholds. They are dynamic (they
-move as other clubs gain fans), and `yesterday_*` holds the same gap as of the prior
-finalized read. The dashboard draws four 50%-opacity horizontal bars on the chart,
-localized to the relevant x position (`now` → a short bar around the current day;
-`proj` → a short bar over the last two days of the month):
+`fans_to_next_tier` / `fans_to_lower_tier` are **gaps**, not totals, and they are relative
+to the club's own total (`circle.monthly_point`). The absolute tier thresholds are therefore:
 
 ```
-nextNow  = finalizedTotal + fans_to_next_tier   // green, solid
-nextProj = projectedTotal + fans_to_next_tier   // green, dashed
-curNow   = finalizedTotal - fans_to_lower_tier  // red,   solid
-curProj  = projectedTotal - fans_to_lower_tier  // red,   dashed
+nextNow  = monthly_point + fans_to_next_tier   // green: to reach the tier above
+floorNow = monthly_point - fans_to_lower_tier  // red:   to hold the current tier
 ```
+
+These thresholds are **global** scores set by other clubs, so they are projected
+independently of our club's data: keep each threshold's month-to-date pace and extend it to
+the end of the month. A threshold at `B` after `finalSlot` of `daysInMonth` days projects to:
+
+```
+thresholdProj = thresholdNow · daysInMonth / finalSlot
+```
+
+E.g. a floor at 10M at the halfway point projects to 20M. (`yesterday_*` is not needed.)
+The chart draws four 50%-opacity horizontal bars, localized to the relevant x position
+(`now` → a short bar around the current day; `proj` → a short bar over the last two days of
+the month): `nextNow` / `nextProj` (green) and `floorNow` / `floorProj` (red). The exact
+same boundaries drive the quota recommendations (below), so the chart and the tiles can
+never disagree.
 
 The legend carries the meaning ("next rank <N>" / "current rank <C>"), so each bar is
 labelled only `now` or `projection`. "next" labels sit above their bar and "current
@@ -153,40 +179,34 @@ header toggle the groups independently (`Ranks now`, `Ranks projected`), both on
 
 `club_rank` is the club's tier (1..11) and maps to a name. `monthly_rank` is the global
 monthly standing shown as the "Current rank" summary value (`#N`); its sub-line names the
-current tier and the surrounding "now" thresholds (`<tier> floor` = current total −
-`fans_to_lower_tier`, `next <tier>` = current total + `fans_to_next_tier`).
+current tier and the surrounding "now" thresholds (`<tier> floor` = `nextNow`/`floorNow`
+above, from `monthly_point`).
 
 ## Quota recommendations
 
-The dashboard's recommendations card turns the tier bars into an actionable per-member
-daily fan target. Target totals come from the live tier gaps, same as the chart bars,
-using the finalized total `C = clubMonthly`:
+The dashboard's recommendations card turns the same projected tier boundaries the chart
+draws (see above) into an actionable per-member daily fan target. With `C = clubMonthly` (the
+finalized total the chart's actual line ends at), `R = daysInMonth − finalSlot`, and `M` the
+present-member count:
 
 ```
-keepTarget = C − fans_to_lower_tier   // floor of the current rank
-nextTarget = C + fans_to_next_tier    // bar for the rank above
-```
-
-The bars are **dynamic** — they move as rival clubs gain — so each bar is projected forward
-over the remaining competition days `R = daysInMonth − finalSlot` using its observed
-day-over-day drift. The drift comes from the API's own current-vs-yesterday pair, so it is
-independent of the derived `C`:
-
-```
-keepDrift = (monthly_point − fans_to_lower_tier) − (yesterday_point − yesterday_fans_to_lower_tier)
-nextDrift = (monthly_point + fans_to_next_tier)  − (yesterday_point + yesterday_fans_to_next_tier)
-
-projectedBar = target + drift · R
-requiredPace = drift + (target − C) / R            // club fans / day
+boundaryNow  = monthly_point ± gap                 // nextNow or floorNow, see above
+boundaryProj = boundaryNow · daysInMonth / finalSlot
+requiredPace = (boundaryProj − C) / R              // club fans / day
 quota        = max(0, requiredPace) / M · (1 + margin)   // recommended per member / day
 ```
 
+The threshold is a global score that moves independently of our own total, so the card
+targets its month-to-date-pace projection rather than our own projected total. For "Reach",
+this charges enough pace to close the remaining gap to where the bar is heading; for "Keep",
+the projected boundary is usually below `C`, so the required pace can fall below the club's
+current pace.
+
 The margin (default **10%**, edited in the card and persisted in `localStorage` under
-`umaQuota.margin.v1`) is the safety cushion applied to the required pace. A bar whose
+`umaQuota.margin.v1`) is the safety cushion applied to the required pace. A boundary whose
 projected total falls below `C` requires no quota. Such a tile shows the **buffer** instead:
-the absolute cushion `C − target` as the headline, plus the equivalent per-day **cushion**
-`(C − target) / (R · M)`. When `yesterday_*` is unavailable the drift is 0 and the bars stay
-static.
+the absolute cushion `C − boundaryNow` as the headline, plus the equivalent per-day
+**cushion** `(C − boundaryNow) / (R · M)`.
 
 Every tile (safe or not) also shows the recommended total and two signed deltas:
 
@@ -202,11 +222,10 @@ Edge cases: at the top tier (`club_rank = 11`, `fans_to_next_tier` null) there i
 next-rank target; a missing gap simply hides that tile. `R = 0` (month finalized) shows
 "month complete"; a payload without tier fields shows an empty state.
 
-Note: the "projected to clear/short" label uses `clubProjected` `P` vs the **projected**
-bar `target + drift · R` (so it agrees with the recommended pace), matching the "Projected
-month" summary stat. The chart's *projected* rank bars instead use a club-level straight
-line `clubMonthly / finalSlot · daysInMonth` and the un-projected gap, so the two can differ
-slightly when members joined mid-month or the bar is drifting.
+Note: the "projected to clear/short" label compares `clubProjected` `P` with the
+**projected** boundary `boundaryProj`, and the chart's projection segment ends at the same
+`clubProjected` while its projected rank bars use the same boundaries. The "Projected month"
+summary stat, the chart and the recommendations therefore always agree.
 
 | club_rank | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -220,7 +239,7 @@ chart of their own series, and per-day targets:
 
 ```
 remaining = daysInMonth − finalSlot
-keepQuota = max(0, (quota · daysInMonth − memberMonthly) / remaining)
+keepQuota = max(0, (quota · (daysInMonth − joinedSlot) − memberMonthly) / remaining)
 clubPace  = (clubMonthly / finalSlot) / presentMembers
 reachNext = max(0, nextQuota)      // the club "Reach" quota, per member / day
 ```
@@ -229,12 +248,15 @@ reachNext = max(0, nextQuota)      // the club "Reach" quota, per member / day
 the club's daily quota — a catch-up figure when the member is behind, otherwise 0.
 `clubPace` is the average present member's finalized daily rate. `reachNext` is
 the per-member share of the club pace needed to reach the next rank tier (the same
-drift- and margin-adjusted figure as the club card's "Reach" tile). Each tile shows
+time-scaled and margin-adjusted figure as the club card's "Reach" tile). Each tile shows
 its target next to the member's own current daily average (`memberMonthly /
 presentDays`); the third tile names the next tier and, at the top tier, explains
-that there is nothing higher. The player chart draws a dashed line for each pace
-(quota pace, average club pace, and the next-rank pace) from the member's join day
-to month end. The two player cards are outlined and tinted gold when they show the
+that there is nothing higher. The player chart's **quota line** runs from the member's
+current total to their join-aware month-end target `quota · (daysInMonth − joinedSlot)`,
+so its slope is exactly `keepQuota` and it always agrees with the "Keep up with quota"
+tile (it is flat when the member is already at or above target). The chart also draws the
+average club pace and the next-rank pace, both from the member's join day to month end.
+The two player cards are outlined and tinted gold when they show the
 configured current player, blue when they follow a selected other member, and stay
 hidden entirely in a club the player does not belong to until a member is selected.
 
