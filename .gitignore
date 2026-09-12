@@ -1,0 +1,20 @@
+# Scratch space — always work here, never in global /tmp
+tmp/
+
+# Secrets — never commit
+.env
+.env.*
+.dev.vars
+
+# OS / editor noise
+.DS_Store
+*.log
+
+# Local planning notes
+ROADMAP.md
+
+# Node
+node_modules/
+
+# Local push helper (uses personal SSH key)
+push.sh
