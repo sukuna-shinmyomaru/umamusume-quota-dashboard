@@ -417,6 +417,7 @@
 
     <footer>
       <span>Data: <a href="https://uma.moe" target="_blank" rel="noopener">uma.moe</a> · JST competition calendar · finalized day only</span>
+      <span>Source: <a href="https://github.com/sukuna-shinmyomaru/umamusume-quota-dashboard" target="_blank" rel="noopener">GitHub</a></span>
       <span class="spacer"></span>
       <span id="footTime"></span>
     </footer>
@@ -970,6 +971,7 @@
     }
 
     $("clubTag").textContent = displayName +
+      (state.circleId ? ` #${state.circleId}` : "") +
       (c.member_count ? ` · ${c.member_count} members` : "");
     $("dayPill").textContent = `Day ${d.fin.slot} / ${d.fin.daysInMonth} · ${ymdLabel(d.fin)}`;
     renderFreshPill();

@@ -9,6 +9,12 @@ The interface is built to match uma.moe's own web app — the dark theme, cards,
 and tier/rank iconography — and is meant to read as if it were a new section of
 that site.
 
+## Live site
+
+The dashboard is hosted on GitHub Pages and can be accessed at:
+
+**<https://sukuna-shinmyomaru.github.io/umamusume-quota-dashboard/>**
+
 ## Getting started
 
 No build step, no dependencies, no server — just open `index.html` in a browser
