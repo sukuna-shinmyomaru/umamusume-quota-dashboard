@@ -30,6 +30,7 @@
   .brand small{font-weight:500;color:var(--muted);font-size:12px}
   .spacer{flex:1}
   #circleSelect{max-width:240px}
+  #periodSelect{max-width:220px}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
     background:var(--surface);border:1px solid var(--border);font-size:12px;color:var(--muted)}
   button.pill{cursor:pointer}
@@ -64,6 +65,7 @@
   .chart-toggles{display:flex;gap:8px;flex-wrap:wrap}
   .chart-toggles .btn{font-size:13px;padding:6px 10px}
   canvas{width:100%;height:260px;display:block}
+  .chart-empty{color:var(--faint);font-size:14px;line-height:1.6;padding:30px 10px;text-align:center}
 
   /* quota recommendations */
   .recs{margin:0 0 20px}
@@ -227,6 +229,7 @@
   body.view-mobile .brand{width:100%;font-size:18px}
   body.view-mobile .spacer{display:none}
   body.view-mobile #circleSelect{max-width:none;width:100%}
+  body.view-mobile #periodSelect{max-width:none;width:100%}
   body.view-mobile .pill{font-size:12px}
   body.view-mobile .wrap{padding-bottom:48px}
   body.view-mobile .summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
@@ -261,6 +264,7 @@
   <div class="top-inner">
     <div class="brand"><span class="dot"></span> Uma Quota <small id="clubTag"></small></div>
     <select id="circleSelect" class="hidden" title="Recently viewed clubs"></select>
+    <select id="periodSelect" class="hidden" title="Competition month"></select>
     <div class="spacer"></div>
     <button type="button" class="pill" id="freshPill" title="Updated time">not loaded</button>
     <span class="pill" id="dayPill"></span>
@@ -346,6 +350,7 @@
         </div>
       </div>
       <canvas id="chart"></canvas>
+      <div class="chart-empty hidden" id="chartEmpty"></div>
     </div>
 
     <div class="card recs">
@@ -368,10 +373,11 @@
 
     <div class="card chart-card player-card hidden" id="playerChartCard">
       <div class="chart-head">
-        <h2><span id="playerChartWho">Player</span> cumulative <span class="faint">vs quota pace &amp; projection</span></h2>
-      </div>
-      <canvas id="playerChart"></canvas>
-    </div>
+            <h2><span id="playerChartWho">Player</span> cumulative <span class="faint">vs quota pace &amp; projection</span></h2>
+          </div>
+          <canvas id="playerChart"></canvas>
+          <div class="chart-empty hidden" id="playerChartEmpty"></div>
+        </div>
 
     <div class="card recs player-card hidden" id="playerRecsCard">
       <div class="recs-head">
@@ -416,7 +422,7 @@
     <div class="cards" id="cards"></div>
 
     <footer>
-      <span>Data: <a href="https://uma.moe" target="_blank" rel="noopener">uma.moe</a> · JST competition calendar · finalized day only</span>
+      <span>Data: <a href="https://uma.moe" target="_blank" rel="noopener">uma.moe</a> · JST competition calendar · current + previous month</span>
       <span>Source: <a href="https://github.com/sukuna-shinmyomaru/umamusume-quota-dashboard" target="_blank" rel="noopener">GitHub</a></span>
       <span class="spacer"></span>
       <span id="footTime"></span>
@@ -438,6 +444,7 @@
   const LS_MARGIN = "umaQuota.margin.v1";
   const LS_TZ = "umaQuota.tz.v1";
   const LS_PLAYER = "umaQuota.player.v1";
+  const LS_PERIOD = "umaQuota.period.v1";
   const MAX_RECENT = 8;
 
   // ---------------------------------------------------------------- state
@@ -451,6 +458,7 @@
     search: "",
     view: "pc",           // "pc" | "mobile" (auto-detected once, then user-owned)
     tz: "jst",            // "jst" | "local" — which zone the header/footer clocks use
+    period: "current",    // "current" (competition month in progress) | "previous"
     rankNow: true,        // show rank bars based on the current/finalized total
     rankProj: true,       // show rank bars based on the month-end projection
     playerId: "",         // current player's member id (preferred, browser-wide)
@@ -499,6 +507,14 @@
   }
   function saveTz() {
     try { localStorage.setItem(LS_TZ, state.tz); } catch (e) {}
+  }
+  function loadPeriod() {
+    let v = null;
+    try { v = localStorage.getItem(LS_PERIOD); } catch (e) {}
+    state.period = (v === "previous") ? "previous" : "current";
+  }
+  function savePeriod() {
+    try { localStorage.setItem(LS_PERIOD, state.period); } catch (e) {}
   }
   function loadPlayer() {
     try {
@@ -597,6 +613,18 @@
     sel.innerHTML = list.map((x) =>
       `<option value="${esc(x.id)}"${String(x.id) === String(state.circleId) ? " selected" : ""}>${esc(x.name || ("Circle " + x.id))}</option>`
     ).join("");
+  }
+  function renderPeriodSelect() {
+    const sel = $("periodSelect");
+    if (!sel) return;
+    const j = jstWallClock();
+    const liveDate = addDays(j, -1);
+    const curY = liveDate.getUTCFullYear(), curM = liveDate.getUTCMonth();
+    const p = prevMonth(curY, curM);
+    sel.innerHTML =
+      `<option value="current">${esc(monthLabel(curY, curM))} · current</option>` +
+      `<option value="previous">${esc(monthLabel(p.year, p.monthIndex))} · previous</option>`;
+    sel.value = state.period;
   }
   function renderCircleList() {
     const wrap = $("clubListWrap"), el = $("clubList");
@@ -740,11 +768,37 @@
     const mi = d.getUTCMonth();
     return { year: d.getUTCFullYear(), monthIndex: mi, month: mi + 1, slot: d.getUTCDate(), daysInMonth: daysInUTC(d) };
   }
-  function resolvePeriods() {
+  function prevMonth(year, monthIndex) {
+    const d = new Date(Date.UTC(year, monthIndex - 1, 1));
+    return { year: d.getUTCFullYear(), monthIndex: d.getUTCMonth() };
+  }
+  function monthLabel(year, monthIndex) {
+    return new Date(Date.UTC(year, monthIndex, 1))
+      .toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  }
+  // Build a period for an arbitrary month; `slot` defaults to a completed month
+  // (the last competition day) so past months read their full total.
+  function periodFor(year, monthIndex, slot) {
+    const dim = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+    return { year, monthIndex, month: monthIndex + 1, slot: slot == null ? dim : slot, daysInMonth: dim };
+  }
+  // Resolve the finalized / live competition periods for the selected month.
+  // The current competition month follows the in-progress JST day; before it has
+  // any finalized day (the first days of a month), the in-progress day is used as
+  // the working period so the dashboard reflects the month so far. "previous"
+  // returns the last completed month, which is always fully finalized.
+  function resolvePeriods(mode) {
     const j = jstWallClock();
-    const final = makePeriod(addDays(j, -2));  // finalized competition day (today JST - 2)
-    const live  = makePeriod(addDays(j, -1));  // in-progress competition day (today JST - 1)
-    return { final, live, now: j };
+    const finalDate = addDays(j, -2);  // last finalized competition day (today JST - 2)
+    const liveDate  = addDays(j, -1);  // in-progress competition day  (today JST - 1)
+    const curY = liveDate.getUTCFullYear(), curM = liveDate.getUTCMonth();
+    if (mode === "previous") {
+      const p = prevMonth(curY, curM);
+      return { final: periodFor(p.year, p.monthIndex), live: null, now: j, provisional: false };
+    }
+    const sameMonth = finalDate.getUTCFullYear() === curY && finalDate.getUTCMonth() === curM;
+    if (sameMonth) return { final: makePeriod(finalDate), live: makePeriod(liveDate), now: j, provisional: false };
+    return { final: makePeriod(liveDate), live: null, now: j, provisional: true };
   }
 
   // ---------------------------------------------------------------- series
@@ -792,7 +846,7 @@
     if (scoped.length) members = scoped;
 
     const fin = periods.final, live = periods.live;
-    const samePeriod = live.year === fin.year && live.month === fin.month;
+    const samePeriod = !!(live && live.year === fin.year && live.month === fin.month);
 
     const parsed = members.map((m) => {
       const series = seriesFromLifetime(m.daily_fans, fin.slot);
@@ -862,7 +916,8 @@
 
     return {
       circle, rows, met, behind, clubMonthly, clubExpected, clubProjected,
-      clubQuotaTarget, avgDaily, cumulative, fin, memberCount: present.length, tier
+      clubQuotaTarget, avgDaily, cumulative, fin, memberCount: present.length, tier,
+      provisional: !!periods.provisional
     };
   }
 
@@ -891,7 +946,7 @@
     if (!silent) setBusy(true);
     setMsg("");
     try {
-      const periods = resolvePeriods();
+      const periods = resolvePeriods(state.period);
       const payload = await apiGet({ circle_id: reqCircle, year: periods.final.year, month: periods.final.month });
       if (seq !== state.loadSeq || reqCircle !== state.circleId) return;   // superseded by a newer load
       state.data = compute(payload, periods);
@@ -943,6 +998,7 @@
   function showSetup() {
     $("setupCard").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
+    $("periodSelect").classList.add("hidden");
     exitEdit();
     $("setupKey").value = state.apiKey || "";
     $("setupPlayer").value = playerInputValue();
@@ -954,6 +1010,8 @@
   function showDashboard() {
     $("setupCard").classList.add("hidden");
     $("dashboard").classList.remove("hidden");
+    renderPeriodSelect();
+    $("periodSelect").classList.remove("hidden");
     $("quotaInput").value = fmtQuota(state.quota);
     updateSettingsBtn();
   }
@@ -981,7 +1039,8 @@
     $("clubTag").textContent = displayName +
       (state.circleId ? ` #${state.circleId}` : "") +
       (c.member_count ? ` · ${c.member_count} members` : "");
-    $("dayPill").textContent = `Day ${d.fin.slot} / ${d.fin.daysInMonth} · ${ymdLabel(d.fin)}`;
+    $("dayPill").textContent = `${ymdLabel(d.fin)} · Day ${d.fin.slot} / ${d.fin.daysInMonth}` +
+      (d.provisional ? " · live" : "");
     renderFreshPill();
     renderFootTime();
 
@@ -1012,9 +1071,9 @@
       { label: "Club avg / day", value: compact(d.avgDaily), sub: "finalized days only" },
       { label: "Current rank", value: monthlyRank != null ? "#" + monthlyRank : (rankNow || "—"),
         sub: rankParts.join(" · ") || "tier data unavailable" },
-      { label: "Projected month", value: compact(d.clubProjected),
-        cls: d.clubProjected >= d.clubQuotaTarget ? "good" : "warn",
-        sub: signed(clubProjectedDeficit) + " vs full quota" }
+      { label: "Projected month", value: d.provisional ? "—" : compact(d.clubProjected),
+        cls: d.provisional ? "" : (d.clubProjected >= d.clubQuotaTarget ? "good" : "warn"),
+        sub: d.provisional ? "needs a completed day" : signed(clubProjectedDeficit) + " vs full quota" }
     ];
     $("summary").innerHTML = stats.map((s) => `
       <div class="stat ${s.cls || ""}">
@@ -1143,6 +1202,11 @@
     const grid = $("recGrid"), note = $("recNote");
     if (!grid || !note) return;
     if (!d) { grid.innerHTML = ""; note.textContent = ""; return; }
+    if (d.provisional) {
+      grid.innerHTML = `<div class="rec-empty">${esc(PROVISIONAL_MSG)}</div>`;
+      note.textContent = "";
+      return;
+    }
     const m = recModel(d);
     if (!m.tierKnown) {
       grid.innerHTML = '<div class="rec-empty">Rank tier data is unavailable for this club.</div>';
@@ -1253,7 +1317,8 @@
     $("tableNote").textContent =
       `${rows.length} trainers · quota ${compact(state.quota)}/day · ` +
       `expected through day ${d.fin.slot}: ${compact(d.clubExpected)} across present members` +
-      (state.live ? " · live column shows in-progress JST day" : "");
+      (d.provisional ? " · no finalized day yet, showing the in-progress JST day"
+        : state.live ? " · live column shows in-progress JST day" : "");
 
     $("thead").innerHTML = COLS.map((col) => {
       const on = state.sort === col.k;
@@ -1292,8 +1357,8 @@
         <td><div class="pace">${paceBar(r.pace, bar)}
           <small style="color:${bar.bg || bar.color}">${pct(r.pace)}</small></div></td>
         <td class="num ${r.deficit >= 0 ? "pos" : "neg"}">${signed(r.deficit)}</td>
-        <td class="num" title="${nf(r.projected)}">${compact(r.projected)}
-          <span class="${r.projectedDeficit >= 0 ? "pos" : "neg"}">(${signed(r.projectedDeficit)})</span></td>
+        <td class="num"${d.provisional ? "" : ` title="${nf(r.projected)}"`}>${d.provisional ? '<span class="faint">—</span>'
+          : `${compact(r.projected)} <span class="${r.projectedDeficit >= 0 ? "pos" : "neg"}">(${signed(r.projectedDeficit)})</span>`}</td>
       </tr>`;
     }).join("");
   }
@@ -1301,6 +1366,7 @@
   function renderCards() {
     const rows = sortedRows();
     const me = resolveCurrentPlayer();
+    const provisional = !!(state.data && state.data.provisional);
     let rank = 0;
     $("cards").innerHTML = rows.map((r) => {
       const inactive = r.inactive || !r.present;
@@ -1339,7 +1405,7 @@
           <div class="mstat"><span class="label">vs Quota</span>
             <span class="mval ${r.deficit >= 0 ? "pos" : "neg"}">${signed(r.deficit)}</span></div>
           <div class="mstat"><span class="label">Projected</span>
-            <span class="mval">${compact(r.projected)}</span></div>
+            <span class="mval">${provisional ? '<span class="faint">—</span>' : compact(r.projected)}</span></div>
           ${liveStat}
         </div>
       </div>`;
@@ -1475,15 +1541,36 @@
   function chartData(d) {
     return clubChart(d);
   }
-  function updateChartChrome() {
+  function updateChartChrome(d) {
     const who = $("chartWho");
     if (who) who.textContent = "Club";
     const toggles = $("chartToggles");
-    if (toggles) toggles.classList.remove("hidden");
+    if (toggles) toggles.classList.toggle("hidden", !!(d && d.provisional));
+  }
+
+  // The chart and the quota projections need at least one completed competition
+  // day to draw a curve / size a month-end pace. With only the in-progress day
+  // available the projection extrapolates the whole month from a single sample
+  // (and squashes the real data flat), so we hide them and say why instead.
+  const PROVISIONAL_MSG =
+    "Waiting for the first finalized competition day — projections need at least " +
+    "one completed day to be meaningful. Check back after the next JST finalize, " +
+    "or view the previous month.";
+  function showChartEmpty(canvasId, emptyId) {
+    const canvas = $(canvasId), empty = $(emptyId);
+    if (canvas) canvas.classList.add("hidden");
+    if (empty) { empty.textContent = PROVISIONAL_MSG; empty.classList.remove("hidden"); }
+  }
+  function hideChartEmpty(canvasId, emptyId) {
+    const canvas = $(canvasId), empty = $(emptyId);
+    if (canvas) canvas.classList.remove("hidden");
+    if (empty) empty.classList.add("hidden");
   }
 
   function drawChart(d) {
-    updateChartChrome();
+    updateChartChrome(d);
+    if (d.provisional) { showChartEmpty("chart", "chartEmpty"); return; }
+    hideChartEmpty("chart", "chartEmpty");
     drawChartOn($("chart"), chartData(d), d);
   }
   function drawChartOn(canvas, cd, d) {
@@ -1673,6 +1760,8 @@
     return !!(me && me === focusedRow(d));
   }
   function drawPlayerChart(d, r) {
+    if (d.provisional) { showChartEmpty("playerChart", "playerChartEmpty"); return; }
+    hideChartEmpty("playerChart", "playerChartEmpty");
     const cd = playerChart(d, r.id);
     if (cd) drawChartOn($("playerChart"), cd, d);
   }
@@ -1736,6 +1825,11 @@
   function renderPlayerRecs(d, r) {
     const grid = $("playerRecGrid"), note = $("playerRecNote");
     if (!grid || !note) return;
+    if (d.provisional) {
+      grid.innerHTML = `<div class="rec-empty">${esc(PROVISIONAL_MSG)}</div>`;
+      note.textContent = "";
+      return;
+    }
     const m = playerRecModel(d, r);
     const reachTitle = "Reach " + (m.nextRank ? "rank " + m.nextRank : "next rank");
     const reachMissing = !m.tierKnown ? "rank tier data unavailable"
@@ -1761,7 +1855,10 @@
     state.countdown = Math.round(REFRESH_MS / 1000);
     state.timer = setInterval(() => {
       state.countdown--;
-      if (state.countdown <= 0) { state.countdown = Math.round(REFRESH_MS / 1000); load({ silent: true }); }
+      if (state.countdown <= 0) {
+        state.countdown = Math.round(REFRESH_MS / 1000);
+        if (state.period !== "previous") load({ silent: true });   // past month is immutable
+      }
       updateFootTimer();
     }, 1000);
   }
@@ -1850,6 +1947,12 @@
   }
 
   $("circleSelect").addEventListener("change", (e) => switchCircle(e.target.value));
+  $("periodSelect").addEventListener("change", (e) => {
+    state.period = e.target.value === "previous" ? "previous" : "current";
+    savePeriod();
+    state.selectedId = null;
+    load();
+  });
   $("setupConnect").addEventListener("click", submitSetup);
   $("setupCancel").addEventListener("click", exitEdit);
   $("clubList").addEventListener("click", (e) => {
@@ -1951,6 +2054,7 @@
   loadSettings();
   loadMargin();
   loadTz();
+  loadPeriod();
   loadPlayer();
   loadView();
   applyView();

@@ -29,6 +29,7 @@ Everything is kept client-side in `localStorage`:
 - `umaQuota.margin.v1` — the safety margin %.
 - `umaQuota.view.v1` — the PC/mobile layout choice.
 - `umaQuota.tz.v1` — whether the header/footer clocks show `jst` (default) or `local`.
+- `umaQuota.period.v1` — the selected competition month: `current` (default) or `previous`.
 - `umaQuota.player.v1` — the optional current player, `{id, name}`, used to highlight that
   member's row/card. `id` is the 12-digit numeric `viewer_id` (a leading `#` in the input is
   stripped); `name` is only used when it matches exactly one member. Browser-wide, so it
@@ -97,17 +98,31 @@ JST day `i+1`.
 
 ### Slot resolution (used by `resolvePeriods()` in `index.html`)
 
-Let `j` = today's JST date.
+Let `j` = today's JST date. The header's month selector picks one of two modes:
 
-| target | computation | example (JST day 11) |
-|---|---|---|
-| finalized competition day | `j − 2` | Sep 9 → slot `9` |
-| finalized API month | month of `j − 2` | `2026-09` |
-| in-progress competition day | `j − 1` | Sep 10 → slot `10` |
+- **current** (default) — the competition month that contains the in-progress day.
+- **previous** — the last completed competition month (always fully finalized).
 
-The finalized slot (`9`) reproduces `circle.monthly_point` after ignoring today's
-in-progress slot. Verified on circle `574559219`: derived `873,935,509` vs API
-`877,119,814` — **0.36%** (the documented residual).
+| mode | target | computation | example (JST day 11) |
+|---|---|---|---|
+| current | finalized competition day | `j − 2` | Sep 9 → slot `9` |
+| current | in-progress competition day | `j − 1` | Sep 10 → slot `10` |
+| previous | finalized competition day | last day of the prior month | `2026-08` → slot `31` |
+
+On the first days of a month the current month's `j − 2` still falls in the
+previous month, so the current view has no finalized day yet. In that case it
+uses the **in-progress** day (`j − 1`) as the working period and flags the view
+`provisional` (the `dayPill` and table note read “live”); the previous view keeps
+showing the just-completed month at its full total. A provisional view cannot size
+a month-end pace from a single sample, so the club/player charts, the club/player
+quota recommendations, the “Projected month” summary tile and the per-member
+“Projected” column are hidden behind an explanatory empty state until the first
+day finalizes. `daily_fans` still carries the in-progress value, so the
+month-to-date totals, the quota-pace comparison and the leaderboard stay live. The finalized slot (`9`)
+reproduces `circle.monthly_point` after ignoring today's in-progress slot.
+Verified on circle `574559219`: derived `873,935,509` vs API `877,119,814` —
+**0.36%** (the documented residual). A past month returns `yesterday_*` /
+`live_*` as `null`, so the live toggle and in-progress overlays are inert there.
 
 ## Quota & projection math
 
